@@ -759,7 +759,8 @@ else:
 
     # TAB 6: RECOMMENDED HOTELS
     with tab_hotels:
-        st.markdown(f"### Hotel Accommodations in {destination}")
+        st.markdown(f"### Hotel Catalogue in {destination}")
+        st.caption("Sample accommodation entries — not verified live businesses, prices, or availability. Google ratings are shown only after a confident place match.")
         hotels_df = get_hotels(destination)
         for idx, row in hotels_df.iterrows():
             place_info = resolve_place_photo(
@@ -789,7 +790,8 @@ else:
 
     # TAB 7: RECOMMENDED RESTAURANTS
     with tab_restaurants:
-        st.markdown(f"### Dining & Eateries in {destination}")
+        st.markdown(f"### Restaurant Catalogue in {destination}")
+        st.caption("Sample dining entries — not verified live businesses, prices, or opening hours. Google ratings are shown only after a confident place match.")
         restaurants_df = get_restaurants(destination)
         for idx, row in restaurants_df.iterrows():
             place_info = resolve_place_photo(
