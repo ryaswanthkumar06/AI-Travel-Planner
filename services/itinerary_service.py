@@ -115,10 +115,10 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
             )
             # The resolver returns a place-specific Google photo only after a match;
             # otherwise it returns a category-aware curated fallback.
-            photo_url = live_place.get("photo_url") or ev.get("image_url")
+            photo_url = live_place.get("photo_url")
         except Exception:
             live_place = {}
-            photo_url = ev.get("image_url")
+            photo_url = None
     elif ev_type == "meal" and selected_hotel:
         photo_url = selected_hotel.get("photo_url")
 
@@ -306,8 +306,9 @@ def generate_itinerary(
             latitude=selected_hotel.get("latitude", city_lat),
             longitude=selected_hotel.get("longitude", city_lng)
         )
-        selected_hotel["photo_url"] = hotel_details.get("photo_url") or selected_hotel.get("image_url")
+        selected_hotel["photo_url"] = hotel_details.get("photo_url")
         selected_hotel["photo_attribution"] = hotel_details.get("attribution") if hotel_details.get("place_verified") else None
+        selected_hotel["photo_attribution_url"] = hotel_details.get("attribution_url") if hotel_details.get("place_verified") else None
         if hotel_details.get("place_verified"):
             selected_hotel["google_place_id"] = hotel_details.get("google_place_id")
             selected_hotel["rating"] = hotel_details.get("rating")
@@ -326,6 +327,9 @@ def generate_itinerary(
         selected_hotel["rating"] = None
         selected_hotel["review_count"] = None
         selected_hotel["rating_source"] = None
+        selected_hotel["photo_url"] = None
+        selected_hotel["photo_attribution"] = None
+        selected_hotel["photo_attribution_url"] = None
 
     hotel_lat = float(selected_hotel.get("latitude", city_lat))
     hotel_lng = float(selected_hotel.get("longitude", city_lng))
