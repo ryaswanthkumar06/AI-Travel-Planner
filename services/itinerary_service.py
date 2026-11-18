@@ -151,7 +151,7 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
         "google_place_id": google_place_id,
         "google_maps_url": google_maps_url,
         "rating_source": "Google Places" if google_rating is not None else None,
-        "photo_source": live_place.get("source") if live_place.get("place_verified") and live_place.get("is_google_photo") else "Catalogue fallback",
+        "photo_source": "Google Places" if live_place.get("place_verified") and live_place.get("is_google_photo") else "Catalogue fallback",
         "photo_attribution": live_place.get("attribution") if live_place.get("place_verified") else None,
         "photo_attribution_url": live_place.get("attribution_url") if live_place.get("place_verified") else None,
         "website": ev.get("website") or ev.get("websiteUri"),
