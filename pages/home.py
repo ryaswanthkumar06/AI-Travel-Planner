@@ -211,7 +211,7 @@ with left_col:
         else:
             for _, h in hotels_df.head(3).iterrows():
                 place_info = resolve_place_photo(
-                    h.get("name", ""), city_name=ctx_city, category=h.get("category", "hotel"),
+                    h.get("name", ""), city_name=ctx_city, category=f"hotel {h.get('category', '')}",
                     latitude=h.get("latitude"), longitude=h.get("longitude")
                 )
                 img = place_info.get("photo_url") or get_hotel_photo(
@@ -255,7 +255,7 @@ with left_col:
         else:
             for _, r in rest_df.head(3).iterrows():
                 place_info = resolve_place_photo(
-                    r.get("name", ""), city_name=ctx_city, category=r.get("cuisine", "restaurant"),
+                    r.get("name", ""), city_name=ctx_city, category=f"restaurant {r.get('cuisine', '')}",
                     latitude=r.get("latitude"), longitude=r.get("longitude")
                 )
                 img = place_info.get("photo_url") or get_restaurant_photo(
