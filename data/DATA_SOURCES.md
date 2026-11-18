@@ -29,26 +29,24 @@ This document lists every dataset used in the application, including the source 
 ---
 
 ## 🍔 3. Restaurants Dataset (`restaurants.csv`)
-*   **Source Name**: Restaurant Websites & Local Culinary Directories
-*   **Source URL**: [https://www.paradisefoodcourt.com/](https://www.paradisefoodcourt.com/)
-*   **Data Type**: Dining coordinate details, cuisines, and operating hours
-*   **Coverage**: Established dining spots in Hyderabad
-*   **Fields Used**: `id`, `name`, `city`, `state`, `cuisine`, `food_type`, `price_range`, `rating`, `latitude`, `longitude`, `opening_time`, `closing_time`, `image_url`, `source`, `source_url`
-*   **Date Accessed**: 2026-08-24
-*   **License/Usage Notes**: Proprietary names under fair use for educational/travel demonstration.
-*   **Status**: **REAL DATA**
+*   **Source Name**: Synthetic demonstration catalogue
+*   **Source URL**: None. The current rows do not have verified restaurant source pages.
+*   **Data Type**: Illustrative restaurant names, cuisine labels, price bands, ratings, hours, and approximate coordinates.
+*   **Coverage**: 30 destination labels with five templated sample rows per city.
+*   **Status**: **DEMO DATA — NOT VERIFIED**
+
+**Important:** Restaurant names, ratings, coordinates, prices, and opening hours must not be presented as verified businesses or live Google Maps information. Replace the sample rows with individually researched businesses and validated source details before production use.
 
 ---
 
 ## 🏨 4. Hotels Dataset (`hotels.csv`)
-*   **Source Name**: Official Hotel Chains & Booking Aggregators
-*   **Source URL**: [https://www.tajhotels.com/](https://www.tajhotels.com/)
-*   **Data Type**: Accommodation category, prices per night, coordinates, and amenities
-*   **Coverage**: Luxury, standard, and budget accommodations in Hyderabad
-*   **Fields Used**: `id`, `name`, `city`, `state`, `price_per_night`, `rating`, `latitude`, `longitude`, `category`, `amenities`, `image_url`, `source`, `source_url`
-*   **Date Accessed**: 2026-08-24
-*   **License/Usage Notes**: Pricing values represent standard seasonal rates (subject to change).
-*   **Status**: **REAL DATA**
+*   **Source Name**: Synthetic demonstration catalogue
+*   **Source URL**: None. The current rows do not have verified hotel source pages.
+*   **Data Type**: Illustrative hotel names, accommodation categories, price estimates, ratings, amenities, and approximate coordinates.
+*   **Coverage**: 30 destination labels with five templated sample rows per city.
+*   **Status**: **DEMO DATA — NOT VERIFIED**
+
+**Important:** Hotel names, ratings, coordinates, rates, and amenities must not be presented as verified businesses, live Google Maps ratings, or current availability. Replace the sample rows with individually researched properties and validated source details before production use.
 
 ---
 
