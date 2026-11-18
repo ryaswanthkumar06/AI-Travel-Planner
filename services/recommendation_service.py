@@ -36,8 +36,11 @@ def score_attraction(attraction, user_interests, budget_allowance=1000):
     interest_score = interest_match * 100.0
     
     # 2. Rating Score (15%)
-    rating = float(attraction.get("rating", 0.0) or 0.0)
-    rating_score = (rating / 5.0) * 100.0
+    rating = attraction.get("google_rating")
+    if rating is None or pd.isna(rating):
+        rating_score = 50.0  # Neutral until a live, verified rating is available.
+    else:
+        rating_score = (float(rating) / 5.0) * 100.0
     
     # 3. Budget Compatibility (15%)
     price = float(attraction.get("price", 0.0) or 0.0)
@@ -83,8 +86,11 @@ def score_restaurant(restaurant, food_preference, budget_level="Medium"):
         food_score = 100.0
         
     # 2. Rating Score (40%)
-    rating = float(restaurant.get("rating", 0.0) or 0.0)
-    rating_score = (rating / 5.0) * 100.0
+    rating = restaurant.get("google_rating")
+    if rating is None or pd.isna(rating):
+        rating_score = 50.0  # Do not rank sample catalogue rows using invented stars.
+    else:
+        rating_score = (float(rating) / 5.0) * 100.0
     
     # 3. Price Tier Match (20%)
     price_tier = restaurant.get("price_range", "Mid-range")
@@ -129,8 +135,11 @@ def score_hotel(hotel, preferred_category, budget_limit=5000):
     cat_score = 100.0 if is_match else 40.0
         
     # 2. Rating Score (40%)
-    rating = float(hotel.get("rating", 0.0) or 0.0)
-    rating_score = (rating / 5.0) * 100.0
+    rating = hotel.get("google_rating")
+    if rating is None or pd.isna(rating):
+        rating_score = 50.0  # Do not rank sample catalogue rows using invented stars.
+    else:
+        rating_score = (float(rating) / 5.0) * 100.0
     
     # 3. Price Compatibility (20%)
     price = hotel.get("price_per_night")
