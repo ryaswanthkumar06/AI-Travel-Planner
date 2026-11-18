@@ -51,22 +51,28 @@ def get_destination_image(destination_name: str) -> str:
     return get_destination_photo(str(destination_name).strip())
 
 
-def get_attraction_image(category_name: str = "", attraction_name: str = "", city_name: str = "") -> str:
-    """Retrieves an authentic attraction photo."""
+def get_attraction_image(category_name: str = "", attraction_name: str = "", city_name: str = "",
+                         latitude: float = None, longitude: float = None) -> str:
+    """Retrieves a matched attraction photo or a category fallback."""
     if attraction_name:
-        return get_attraction_photo(attraction_name, city_name=city_name, category=category_name)
+        return get_attraction_photo(attraction_name, city_name=city_name, category=category_name,
+                                    latitude=latitude, longitude=longitude)
     return _get_curated_attr_img(category_name, attraction_name)
 
 
-def get_hotel_image(category_name: str = "", hotel_name: str = "", city_name: str = "") -> str:
-    """Retrieves an authentic hotel photo."""
+def get_hotel_image(category_name: str = "", hotel_name: str = "", city_name: str = "",
+                    latitude: float = None, longitude: float = None) -> str:
+    """Retrieves a matched hotel photo or a category fallback."""
     if hotel_name:
-        return get_hotel_photo(hotel_name, city_name=city_name, category=category_name)
+        return get_hotel_photo(hotel_name, city_name=city_name, category=category_name,
+                               latitude=latitude, longitude=longitude)
     return _get_curated_hotel_img(category_name)
 
 
-def get_restaurant_image(cuisine_name: str = "", restaurant_name: str = "", city_name: str = "") -> str:
-    """Retrieves an authentic restaurant photo."""
+def get_restaurant_image(cuisine_name: str = "", restaurant_name: str = "", city_name: str = "",
+                         latitude: float = None, longitude: float = None) -> str:
+    """Retrieves a matched restaurant photo or a cuisine fallback."""
     if restaurant_name:
-        return get_restaurant_photo(restaurant_name, city_name=city_name, cuisine=cuisine_name)
+        return get_restaurant_photo(restaurant_name, city_name=city_name, cuisine=cuisine_name,
+                                    latitude=latitude, longitude=longitude)
     return _get_curated_rest_img(cuisine_name)
