@@ -99,7 +99,7 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
 
     # Resolve a real Places match for photos and live ratings. Never treat CSV/demo
     # ratings as Google ratings, and never use a photo from an uncertain search match.
-    photo_url = ev.get("photo_url") or ev.get("image_url")
+    photo_url = None
     live_place = {}
     ev_type = str(ev.get("type", "")).strip().lower()
     if ev_type in ("attraction", "restaurant"):
@@ -112,12 +112,14 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
                 latitude=lat,
                 longitude=lng
             )
-            if live_place.get("place_verified") and live_place.get("is_google_photo"):
-                photo_url = live_place.get("photo_url") or photo_url
-            elif not photo_url:
-                photo_url = live_place.get("photo_url")
+            # The resolver returns a place-specific Google photo only after a match;
+            # otherwise it returns a category-aware curated fallback.
+            photo_url = live_place.get("photo_url") or ev.get("image_url")
         except Exception:
             live_place = {}
+            photo_url = ev.get("image_url")
+    elif ev_type == "meal" and selected_hotel:
+        photo_url = selected_hotel.get("photo_url")
 
     google_rating = live_place.get("rating") if live_place.get("place_verified") else None
     google_reviews = live_place.get("reviews_count") if live_place.get("place_verified") else None
