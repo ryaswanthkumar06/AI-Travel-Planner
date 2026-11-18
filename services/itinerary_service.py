@@ -125,6 +125,9 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
     google_rating = live_place.get("rating") if live_place.get("place_verified") else None
     google_reviews = live_place.get("reviews_count") if live_place.get("place_verified") else None
     google_place_id = live_place.get("google_place_id") if live_place.get("place_verified") else None
+    google_maps_url = live_place.get("maps_url") if live_place.get("place_verified") else None
+    if google_maps_url:
+        maps_url = google_maps_url
 
     normalized = {
         "id": ev.get("id"),
@@ -146,6 +149,7 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
         "directions_url": directions_url or maps_url,
         "review_count": google_reviews,
         "google_place_id": google_place_id,
+        "google_maps_url": google_maps_url,
         "rating_source": "Google Places" if google_rating is not None else None,
         "photo_source": live_place.get("source") if live_place.get("place_verified") and live_place.get("is_google_photo") else "Catalogue fallback",
         "photo_attribution": live_place.get("attribution") if live_place.get("place_verified") else None,
@@ -311,6 +315,8 @@ def generate_itinerary(
         selected_hotel["photo_attribution_url"] = hotel_details.get("attribution_url") if hotel_details.get("place_verified") else None
         if hotel_details.get("place_verified"):
             selected_hotel["google_place_id"] = hotel_details.get("google_place_id")
+            selected_hotel["google_maps_url"] = hotel_details.get("maps_url")
+            selected_hotel["photo_source"] = "Google Places" if hotel_details.get("is_google_photo") else None
             selected_hotel["rating"] = hotel_details.get("rating")
             selected_hotel["review_count"] = hotel_details.get("reviews_count")
             selected_hotel["rating_source"] = "Google Places" if hotel_details.get("rating") is not None else None
