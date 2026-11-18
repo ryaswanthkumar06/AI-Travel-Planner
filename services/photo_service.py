@@ -192,16 +192,18 @@ def _candidate_match_score(candidate: dict, expected_name: str, city_name: str =
 
     stop_words = {"the", "of", "and", "at", "in", "near", "india"}
     expected_tokens = [t for t in expected.split() if t not in stop_words and t != city]
-    actual_tokens = set(actual.split())
+    actual_tokens = [t for t in actual.split() if t not in stop_words and t != city]
     if not expected_tokens:
         expected_tokens = expected.split()
-    overlap = sum(1 for t in expected_tokens if t in actual_tokens) / max(1, len(expected_tokens))
-    similarity = SequenceMatcher(None, expected, actual).ratio()
-    score = max(similarity, overlap * 0.92)
+    if not actual_tokens:
+        actual_tokens = actual.split()
 
-    address = _normalise_match_text(candidate.get("formattedAddress") or candidate.get("formatted_address") or "")
-    if city and city in address:
-        score = min(1.0, score + 0.06)
+    matched = sum(1 for token in expected_tokens if token in actual_tokens)
+    recall = matched / max(1, len(expected_tokens))
+    precision = matched / max(1, len(actual_tokens))
+    token_f1 = (2 * precision * recall / (precision + recall)) if precision + recall else 0.0
+    similarity = SequenceMatcher(None, expected, actual).ratio()
+    score = max(similarity, token_f1)
 
     location = candidate.get("location") or (candidate.get("geometry") or {}).get("location") or {}
     candidate_lat = location.get("latitude", location.get("lat"))
@@ -210,9 +212,7 @@ def _candidate_match_score(candidate: dict, expected_name: str, city_name: str =
         try:
             from services.routing_service import haversine_distance
             km = haversine_distance(float(latitude), float(longitude), float(candidate_lat), float(candidate_lng))
-            if km <= 2:
-                score = min(1.0, score + 0.08)
-            elif km > 20:
+            if km > 20:
                 score *= 0.65
         except (TypeError, ValueError):
             pass
@@ -231,7 +231,7 @@ def _select_matching_candidate(candidates: list, expected_name: str, city_name: 
     )
     best = ranked[0]
     score = _candidate_match_score(best, expected_name, city_name, latitude, longitude)
-    if score < 0.66:
+    if score < 0.82:
         logger.info("Rejected uncertain Places match for %r in %r (score %.2f).",
                     expected_name, city_name, score)
         return None
