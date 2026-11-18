@@ -114,15 +114,16 @@ with chat_col:
         if not target_city:
             target_city = "Goa"
 
-        # ── Try Gemini API first
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("LLM_API_KEY", "")
+        # ── Try Gemini API first (uses configurable GEMINI_MODEL and secure header)
+        from services.llm_service import query_gemini_assistant, is_gemini_configured
+
         city_attractions = [dict(r) for _, r in get_attractions(target_city).iterrows()]
         city_hotels      = [dict(r) for _, r in get_hotels(target_city).iterrows()]
         city_restaurants = [dict(r) for _, r in get_restaurants(target_city).iterrows()]
         city_zones       = [dict(r) for _, r in get_accident_zones(target_city).iterrows()]
 
         resp_text = None
-        if api_key and api_key not in ("your_key_here", ""):
+        if is_gemini_configured():
             with st.spinner("🌍 Analysing travel database…"):
                 prompt = f"""You are SmartTravel AI, expert India travel consultant.
 Destination context: {target_city}
@@ -133,15 +134,7 @@ Safety: {[z['location_name']+'-'+z['risk_level'] for z in city_zones[:3]]}
 Active trip: {json.dumps(active_trip['itinerary'][:2]) if active_trip else 'None'}
 Question: {user_input}
 Respond with structured bullet points, bold headers, emojis. Include 'Why I recommend it' for each place."""
-                try:
-                    r = requests.post(
-                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
-                        json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=12
-                    )
-                    if r.status_code == 200:
-                        resp_text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                except Exception:
-                    pass
+                resp_text = query_gemini_assistant(prompt)
 
         # ── Structured local fallback
         if not resp_text:

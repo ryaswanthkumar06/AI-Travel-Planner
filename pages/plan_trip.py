@@ -38,24 +38,66 @@ if "plan_step" not in st.session_state:
     st.session_state["plan_step"] = 1
     
 if "trip_inputs" not in st.session_state:
-    st.session_state["trip_inputs"] = {
-        "destination": "Goa",
-        "start_date": datetime.date.today() + datetime.timedelta(days=7),
-        "end_date": datetime.date.today() + datetime.timedelta(days=9),
-        "adults": 2,
-        "children": 0,
-        "seniors": 0,
-        "traveler_type": "Couple",
-        "budget_level": user_prefs.get("budget_preference", "Medium (Standard)"),
-        "custom_budget": 35000.0,
-        "styles": [user_prefs.get("travel_style", "Balanced")],
-        "interests": user_prefs.get("interests", ["Historical Places", "Beaches"]),
-        "food_pref": [user_prefs.get("food_preference", "Any")],
-        "accommodation": user_prefs.get("accommodation_preference", "Mid-range Hotels"),
-        "transport": user_prefs.get("transportation_preference", "Public Transit")
-    }
+    st.session_state["trip_inputs"] = {}
 
 trip_inputs = st.session_state["trip_inputs"]
+
+# Setup defaults for all parameters
+today = datetime.date.today()
+defaults = {
+    "destination": "Goa",
+    "start_date": today + datetime.timedelta(days=7),
+    "end_date": today + datetime.timedelta(days=9),
+    "adults": 2,
+    "children": 0,
+    "seniors": 0,
+    "traveler_type": "Couple",
+    "budget_level": "Medium (Standard)",
+    "custom_budget": 35000.0,
+    "styles": ["Balanced"],
+    "interests": ["Historical Places", "Beaches"],
+    "food_pref": ["Any"],
+    "accommodation": "Mid-range Hotels",
+    "transport": "Public Transit"
+}
+
+# Apply database preferences if they exist
+if user_prefs:
+    if "budget_preference" in user_prefs and user_prefs["budget_preference"]:
+        defaults["budget_level"] = user_prefs["budget_preference"]
+    if "travel_style" in user_prefs and user_prefs["travel_style"]:
+        defaults["styles"] = [user_prefs["travel_style"]]
+    if "interests" in user_prefs and user_prefs["interests"]:
+        if isinstance(user_prefs["interests"], str):
+            defaults["interests"] = [i.strip() for i in user_prefs["interests"].split(",") if i.strip()]
+        elif isinstance(user_prefs["interests"], list):
+            defaults["interests"] = user_prefs["interests"]
+    if "food_preference" in user_prefs and user_prefs["food_preference"]:
+        defaults["food_pref"] = [user_prefs["food_preference"]]
+    if "accommodation_preference" in user_prefs and user_prefs["accommodation_preference"]:
+        defaults["accommodation"] = user_prefs["accommodation_preference"]
+    if "transportation_preference" in user_prefs and user_prefs["transportation_preference"]:
+        defaults["transport"] = user_prefs["transportation_preference"]
+
+# Ensure every field is initialized safely
+for key, val in defaults.items():
+    if key not in trip_inputs or trip_inputs[key] is None:
+        trip_inputs[key] = val
+
+# Standardize date types and bounds
+for key in ["start_date", "end_date"]:
+    val = trip_inputs[key]
+    if isinstance(val, str):
+        try:
+            trip_inputs[key] = datetime.datetime.strptime(val, "%Y-%m-%d").date()
+        except Exception:
+            trip_inputs[key] = defaults[key]
+
+if trip_inputs["start_date"] < today:
+    trip_inputs["start_date"] = today
+
+if trip_inputs["end_date"] < trip_inputs["start_date"]:
+    trip_inputs["end_date"] = trip_inputs["start_date"] + datetime.timedelta(days=2)
 
 # ----------------------------------------------------
 # 1. WIZARD STEPPER VIEW
@@ -133,8 +175,17 @@ if not st.session_state.get("active_trip"):
                         
         elif active_step == 2:
             st.markdown("### 📅 Step 2: When are you traveling?")
+
+            # Render start_date with minimum boundary set to today
             start_date = st.date_input("Start Date", value=trip_inputs["start_date"], min_value=datetime.date.today())
-            end_date = st.date_input("End Date", value=trip_inputs["end_date"], min_value=start_date)
+
+            # Dynamically adjust end_date value if start_date exceeds it
+            min_end_date = start_date
+            current_end = trip_inputs["end_date"]
+            if current_end < start_date:
+                current_end = start_date
+
+            end_date = st.date_input("End Date", value=current_end, min_value=min_end_date)
             
             trip_inputs["start_date"] = start_date
             trip_inputs["end_date"] = end_date
@@ -283,7 +334,10 @@ else:
     top_c1, top_c2, top_c3, top_c4, top_c5 = st.columns([3.2, 1.8, 1.8, 1.6, 1.6])
     with top_c1:
         st.markdown(f"<h2 style='color:#FFFFFF;margin:0;'>🎒 {trip_name}</h2>", unsafe_allow_html=True)
-        st.markdown(f"<p style='color:rgba(255,255,255,0.60);margin:0;'>{trip.get('days', 3)} Days · {trip.get('travelers', 2)} Travelers · ₹{trip.get('budget', 30000):,.0f} Budget</p>", unsafe_allow_html=True)
+        meta_txt = f"{trip.get('days', 3)} Days · {trip.get('travelers', 2)} Travelers · ₹{trip.get('budget', 30000):,.0f} Budget"
+        if trip.get("llm_polished"):
+            meta_txt += " · ✨ AI Polished"
+        st.markdown(f"<p style='color:rgba(255,255,255,0.60);margin:0;'>{meta_txt}</p>", unsafe_allow_html=True)
     
     is_saved = st.session_state.get("is_trip_saved", False) or bool(trip.get("id"))
     with top_c2:
@@ -382,6 +436,8 @@ else:
         for day in trip["itinerary"]:
             day_num = day["day"]
             with st.expander(f"📅 **Day {day_num} — {day.get('theme', 'Explore')}** ({day.get('weather', 'Clear')})", expanded=True):
+                if day.get("travel_tip"):
+                    st.markdown(f"<div style='background:rgba(56,189,248,0.10);border:1px solid rgba(56,189,248,0.28);border-radius:8px;padding:8px 12px;margin-bottom:10px;'><span style='color:#38BDF8;font-size:0.82rem;font-weight:700;'>💡 Day {day_num} Tip:</span> <span style='color:rgba(255,255,255,0.85);font-size:0.82rem;'>{day['travel_tip']}</span></div>", unsafe_allow_html=True)
                 if day.get("day_route_url"):
                     st.link_button(f"🚗 Open Day {day_num} Route in Google Maps", day["day_route_url"])
                     st.write("")
@@ -420,6 +476,8 @@ else:
                                 st.markdown(f"<span style='color:#FFD166;font-weight:700;font-size:0.82rem;'>⭐ {rating_val}{rev_txt}</span>", unsafe_allow_html=True)
                                 
                             st.markdown(f"<p style='font-size:0.84rem;color:rgba(255,255,255,0.72);margin:4px 0 6px;'>{ev.get('description', '')}</p>", unsafe_allow_html=True)
+                            if ev.get("why_recommended"):
+                                st.markdown(f"<p style='font-size:0.78rem;color:#A7F3D0;margin:0 0 6px;'>✨ <em>Why: {ev['why_recommended']}</em></p>", unsafe_allow_html=True)
                             
                             if ev.get("address"):
                                 st.markdown(f"<p style='font-size:0.76rem;color:rgba(255,255,255,0.50);margin:0 0 4px;'>📍 {ev['address']}</p>", unsafe_allow_html=True)

@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import textwrap
+import datetime
 from database.db_manager import get_user_trips, delete_trip
 from services.destination_image_service import (
     get_destination_image,
@@ -111,6 +112,51 @@ else:
         bc1, bc2, bc3, bc4 = st.columns([1, 1, 1.2, 1], gap="small")
         with bc1:
             if st.button("👁️ View", key=f"mt_view_{t['id']}", use_container_width=True):
+                # Restore trip_inputs state so Re-Plan/modifications work correctly
+                try:
+                    s_date = datetime.datetime.strptime(t.get("start_date", ""), "%Y-%m-%d").date()
+                except Exception:
+                    s_date = datetime.date.today() + datetime.timedelta(days=7)
+                try:
+                    e_date = datetime.datetime.strptime(t.get("end_date", ""), "%Y-%m-%d").date()
+                except Exception:
+                    e_date = datetime.date.today() + datetime.timedelta(days=9)
+
+                interests_val = []
+                if t.get("interests"):
+                    try:
+                        interests_val = json.loads(t["interests"])
+                        if not isinstance(interests_val, list):
+                            interests_val = [str(interests_val)]
+                    except Exception:
+                        interests_val = [t["interests"]]
+
+                food_pref_val = ["Any"]
+                if t.get("food_preferences"):
+                    try:
+                        food_pref_val = json.loads(t["food_preferences"])
+                        if not isinstance(food_pref_val, list):
+                            food_pref_val = [str(food_pref_val)]
+                    except Exception:
+                        food_pref_val = [t["food_preferences"]]
+
+                st.session_state["trip_inputs"] = {
+                    "destination": t["destination"],
+                    "start_date": s_date,
+                    "end_date": e_date,
+                    "adults": max(1, int(t.get("travelers", 2))),
+                    "children": 0,
+                    "seniors": 0,
+                    "traveler_type": "Couple" if int(t.get("travelers", 2)) == 2 else ("Solo" if int(t.get("travelers", 2)) == 1 else "Friends Group"),
+                    "budget_level": "Custom Exact Amount",
+                    "custom_budget": float(t.get("budget", 30000.0)),
+                    "styles": [t.get("travel_style", "Balanced")],
+                    "interests": interests_val,
+                    "food_pref": food_pref_val,
+                    "accommodation": t.get("accommodation", "Mid-range Hotels"),
+                    "transport": t.get("transportation", "Public Transit")
+                }
+
                 st.session_state["active_trip"] = {
                     "id": t["id"], "destination": t["destination"],
                     "days": t["duration_days"], "travelers": t["travelers"],

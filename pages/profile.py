@@ -183,6 +183,7 @@ with pref_col:
                 if "trip_inputs" in st.session_state:
                     st.session_state["trip_inputs"]["budget_level"]   = new_budget
                     st.session_state["trip_inputs"]["travel_style"]   = new_style
+                    st.session_state["trip_inputs"]["styles"]         = [new_style]
                     st.session_state["trip_inputs"]["food_pref"]      = [new_food]
                     st.session_state["trip_inputs"]["accommodation"]  = new_stay
                     st.session_state["trip_inputs"]["transport"]      = new_trans

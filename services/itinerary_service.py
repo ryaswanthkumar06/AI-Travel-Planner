@@ -476,7 +476,7 @@ def generate_itinerary(
     # 9. Safety Audit
     safety_report = check_route_safety(destination, itinerary_coords)
     
-    return {
+    trip_result = {
         "success": True,
         "destination": destination,
         "days": days,
@@ -497,6 +497,16 @@ def generate_itinerary(
         "safety_message": safety_report.get("message", "Route verified."),
         "safety_alerts": safety_report.get("alerts", [])
     }
+
+    # 10. AI Polish (Gemini) — safely enrich descriptions without altering factual data
+    try:
+        from services.llm_service import polish_itinerary_with_llm
+        trip_result = polish_itinerary_with_llm(trip_result)
+    except Exception as e:
+        trip_result["llm_polished"] = False
+        trip_result["llm_warning"] = "AI enrichment skipped due to internal error."
+
+    return trip_result
 
 def build_itinerary(*args, **kwargs) -> dict:
     """
