@@ -203,7 +203,7 @@ def _candidate_match_score(candidate: dict, expected_name: str, city_name: str =
     if city and city in address:
         score = min(1.0, score + 0.06)
 
-    location = candidate.get("location") or candidate.get("geometry", {}).get("location") or {}
+    location = candidate.get("location") or (candidate.get("geometry") or {}).get("location") or {}
     candidate_lat = location.get("latitude", location.get("lat"))
     candidate_lng = location.get("longitude", location.get("lng"))
     if latitude is not None and longitude is not None and candidate_lat is not None and candidate_lng is not None:
@@ -241,12 +241,26 @@ def _select_matching_candidate(candidates: list, expected_name: str, city_name: 
 def _build_legacy_photo_url(photo_ref: str, max_width: int = 800) -> str:
     if not photo_ref or not is_api_configured():
         return ""
-    params = urllib.parse.urlencode({
+    url = f"{PLACES_LEGACY_BASE}/photo"
+    params = {
         "maxwidth": max_width,
         "photoreference": photo_ref,
         "key": GOOGLE_API_KEY
-    })
-    return f"{PLACES_LEGACY_BASE}/photo?{params}"
+    }
+    try:
+        # Follow Google's redirect on the server so the API key is not exposed
+        # in a browser-visible image URL.
+        response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT,
+                                allow_redirects=True, stream=True)
+        try:
+            if response.status_code == 200 and response.url.startswith("https://"):
+                return response.url
+            logger.warning("Legacy Google photo lookup failed with HTTP %s.", response.status_code)
+        finally:
+            response.close()
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Legacy Google photo lookup failed: %s", type(exc).__name__)
+    return ""
 
 
 # ── Core Place & Photo Resolver ─────────────────────────────────────────
