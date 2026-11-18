@@ -497,7 +497,7 @@ def get_attraction_photo(attraction_name: str, city_name: str = "", category: st
 def get_hotel_photo(hotel_name: str, city_name: str = "", category: str = "",
                     latitude: float = None, longitude: float = None) -> str:
     """Returns a matched Google photo or a relevant curated fallback."""
-    res = resolve_place_photo(hotel_name, city_name=city_name, category=category or "hotel",
+    res = resolve_place_photo(hotel_name, city_name=city_name, category=f"hotel {category or ''}",
                               latitude=latitude, longitude=longitude)
     return res.get("photo_url") or _get_curated_hotel_img(category)
 
@@ -505,7 +505,7 @@ def get_hotel_photo(hotel_name: str, city_name: str = "", category: str = "",
 def get_restaurant_photo(restaurant_name: str, city_name: str = "", cuisine: str = "",
                          latitude: float = None, longitude: float = None) -> str:
     """Returns a matched Google photo or a relevant curated fallback."""
-    res = resolve_place_photo(restaurant_name, city_name=city_name, category=cuisine or "restaurant",
+    res = resolve_place_photo(restaurant_name, city_name=city_name, category=f"restaurant {cuisine or ''}",
                               latitude=latitude, longitude=longitude)
     return res.get("photo_url") or _get_curated_rest_img(cuisine)
 
