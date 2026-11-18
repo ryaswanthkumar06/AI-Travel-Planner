@@ -272,7 +272,8 @@ def resolve_place_photo(
     max_width: int = 800,
     max_height: int = 600,
     latitude: float = None,
-    longitude: float = None
+    longitude: float = None,
+    photo_count: int = 1
 ) -> dict:
     """
     Main entry point for resolving a place and retrieving its photos, place_id,
@@ -370,7 +371,7 @@ def resolve_place_photo(
         attribution = None
 
         if photos_raw:
-            for idx, pr in enumerate(photos_raw[:5]):
+            for idx, pr in enumerate(photos_raw[:max(1, min(int(photo_count), 5))]):
                 p_name = pr.get("name", "")
                 if p_name:
                     p_url = _build_new_photo_url(p_name, max_width, max_height)
@@ -435,7 +436,7 @@ def resolve_place_photo(
         attribution = None
 
         if photos_raw:
-            for idx, pr in enumerate(photos_raw[:5]):
+            for idx, pr in enumerate(photos_raw[:max(1, min(int(photo_count), 5))]):
                 p_ref = pr.get("photo_reference", "")
                 if p_ref:
                     p_url = _build_legacy_photo_url(p_ref, max_width)
@@ -529,7 +530,7 @@ def get_place_photo(place_id: str, max_width: int = 800, max_height: int = 600) 
 
 def get_place_photos(place_id_or_name: str, city_name: str = "", count: int = 5) -> list:
     """Retrieves up to `count` photo URLs for a place or destination."""
-    res = resolve_place_photo(place_id_or_name, city_name=city_name)
+    res = resolve_place_photo(place_id_or_name, city_name=city_name, photo_count=count)
     gallery = res.get("gallery_photos", [])
     if gallery:
         return gallery[:count]
