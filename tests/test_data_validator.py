@@ -68,3 +68,15 @@ def test_unverified_attraction_stars_do_not_change_recommendation_score():
     assert score_attraction(low, ["Historical Places"]) == score_attraction(
         high, ["Historical Places"]
     )
+
+
+
+def test_unverified_attraction_ratings_do_not_affect_recommendation_score():
+    # Backward-compatible "rating" CSV values are intentionally ignored.
+    from services.recommendation_service import score_attraction
+
+    item = {"category": "Historical", "price": 0, "rating": 1.0}
+    changed = {**item, "rating": 5.0}
+    assert score_attraction(item, ["Historical Places"]) == score_attraction(
+        changed, ["Historical Places"]
+    )
