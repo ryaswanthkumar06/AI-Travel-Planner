@@ -560,7 +560,10 @@ def test_integration_generate_itinerary_with_failing_gemini(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "valid_key_failing")
 
     mock_resp = make_mock_gemini_response(500)
-    with patch("requests.post", return_value=mock_resp):
+    with patch("requests.post", return_value=mock_resp), patch(
+        "services.itinerary_service.get_live_weather",
+        return_value={"current": {}, "forecast": []}
+    ):
         trip = generate_itinerary(destination="Goa", days=2, budget=20000.0)
 
         assert trip["success"] is True
@@ -598,7 +601,10 @@ def test_integration_generate_itinerary_with_successful_gemini(monkeypatch):
     }
     mock_resp = make_mock_gemini_response(200, text_content=json.dumps(llm_payload))
 
-    with patch("requests.post", return_value=mock_resp):
+    with patch("requests.post", return_value=mock_resp), patch(
+        "services.itinerary_service.get_live_weather",
+        return_value={"current": {}, "forecast": []}
+    ):
         trip = generate_itinerary(destination="Goa", days=1, budget=20000.0)
 
         assert trip["success"] is True

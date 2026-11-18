@@ -97,12 +97,37 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
                 dest_coords=(lat, lng)
             )
 
-    # Resolve Photo
-    photo_url = ev.get("photo_url") or ev.get("image_url")
-    if not photo_url or "photo-15000000" in str(photo_url) or "photo-16000000" in str(photo_url):
-        from services.photo_service import resolve_place_photo
-        res = resolve_place_photo(place, city_name=destination_city, category=category)
-        photo_url = res.get("photo_url")
+    # Resolve a real Places match for photos and live ratings. Never treat CSV/demo
+    # ratings as Google ratings, and never use a photo from an uncertain search match.
+    photo_url = None
+    live_place = {}
+    ev_type = str(ev.get("type", "")).strip().lower()
+    if ev_type in ("attraction", "restaurant"):
+        try:
+            from services.photo_service import resolve_place_photo
+            place_category = f"restaurant {category}" if ev_type == "restaurant" else category
+            live_place = resolve_place_photo(
+                place,
+                city_name=destination_city,
+                category=place_category,
+                latitude=lat,
+                longitude=lng
+            )
+            # The resolver returns a place-specific Google photo only after a match;
+            # otherwise it returns a category-aware curated fallback.
+            photo_url = live_place.get("photo_url")
+        except Exception:
+            live_place = {}
+            photo_url = None
+    elif ev_type == "meal" and selected_hotel:
+        photo_url = selected_hotel.get("photo_url")
+
+    google_rating = live_place.get("rating") if live_place.get("place_verified") else None
+    google_reviews = live_place.get("reviews_count") if live_place.get("place_verified") else None
+    google_place_id = live_place.get("google_place_id") if live_place.get("place_verified") else None
+    google_maps_url = live_place.get("maps_url") if live_place.get("place_verified") else None
+    if google_maps_url:
+        maps_url = google_maps_url
 
     normalized = {
         "id": ev.get("id"),
@@ -122,7 +147,13 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
         "image_url": photo_url,
         "maps_url": maps_url,
         "directions_url": directions_url or maps_url,
-        "review_count": ev.get("review_count") or ev.get("reviews_count") or ev.get("user_rating_count"),
+        "review_count": google_reviews,
+        "google_place_id": google_place_id,
+        "google_maps_url": google_maps_url,
+        "rating_source": "Google Places" if google_rating is not None else None,
+        "photo_source": "Google Places" if live_place.get("place_verified") and live_place.get("is_google_photo") else "Catalogue fallback",
+        "photo_attribution": live_place.get("attribution") if live_place.get("place_verified") else None,
+        "photo_attribution_url": live_place.get("attribution_url") if live_place.get("place_verified") else None,
         "website": ev.get("website") or ev.get("websiteUri"),
         "phone": ev.get("phone") or ev.get("nationalPhoneNumber"),
         "open_now": ev.get("open_now"),
@@ -136,8 +167,12 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
     if lng is not None:
         normalized["longitude"] = lng
         normalized["lng"] = lng
-    if rating is not None:
-        normalized["rating"] = rating
+    if google_rating is not None:
+        normalized["rating"] = google_rating
+        normalized["google_rating"] = google_rating
+    else:
+        normalized["rating"] = None
+        normalized["google_rating"] = None
     if address:
         normalized["address"] = address
     if safety:
@@ -264,6 +299,41 @@ def generate_itinerary(
         "latitude": city_lat,
         "longitude": city_lng
     }
+    # Replace catalogue placeholders with Google data only when the name/location
+    # match is strong. Keep internal recommendation scores out of the UI.
+    try:
+        from services.photo_service import resolve_place_photo
+        hotel_details = resolve_place_photo(
+            selected_hotel.get("name", ""),
+            city_name=destination,
+            category=f"hotel {selected_hotel.get('category', '')}",
+            latitude=selected_hotel.get("latitude", city_lat),
+            longitude=selected_hotel.get("longitude", city_lng)
+        )
+        selected_hotel["photo_url"] = hotel_details.get("photo_url")
+        selected_hotel["photo_attribution"] = hotel_details.get("attribution") if hotel_details.get("place_verified") else None
+        selected_hotel["photo_attribution_url"] = hotel_details.get("attribution_url") if hotel_details.get("place_verified") else None
+        if hotel_details.get("place_verified"):
+            selected_hotel["google_place_id"] = hotel_details.get("google_place_id")
+            selected_hotel["google_maps_url"] = hotel_details.get("maps_url")
+            selected_hotel["photo_source"] = "Google Places" if hotel_details.get("is_google_photo") else None
+            selected_hotel["rating"] = hotel_details.get("rating")
+            selected_hotel["review_count"] = hotel_details.get("reviews_count")
+            selected_hotel["rating_source"] = "Google Places" if hotel_details.get("rating") is not None else None
+        else:
+            selected_hotel["rating"] = None
+            selected_hotel["review_count"] = None
+            selected_hotel["rating_source"] = None
+    except Exception:
+        selected_hotel["rating"] = None
+        selected_hotel["review_count"] = None
+        selected_hotel["rating_source"] = None
+        selected_hotel["photo_url"] = None
+        selected_hotel["photo_attribution"] = None
+        selected_hotel["photo_attribution_url"] = None
+        selected_hotel["photo_source"] = None
+        selected_hotel["google_maps_url"] = None
+
     hotel_lat = float(selected_hotel.get("latitude", city_lat))
     hotel_lng = float(selected_hotel.get("longitude", city_lng))
     

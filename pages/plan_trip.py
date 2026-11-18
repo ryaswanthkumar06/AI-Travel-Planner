@@ -419,17 +419,55 @@ else:
         
         # Selected Hotel Banner
         sh = trip.get("selected_hotel", {})
+        if sh and sh.get("google_place_id") and (sh.get("rating") is None or not sh.get("photo_url")):
+            place_id = sh["google_place_id"]
+            refresh_key = f"google_place_refreshed_{place_id}"
+            if not st.session_state.get(refresh_key):
+                try:
+                    from services.photo_service import get_place_details_by_id
+                    hotel_live = get_place_details_by_id(place_id)
+                    if hotel_live:
+                        sh["rating"] = hotel_live.get("rating")
+                        sh["review_count"] = hotel_live.get("reviews_count")
+                        sh["rating_source"] = "Google Places" if hotel_live.get("rating") is not None else None
+                        sh["photo_url"] = hotel_live.get("photo_url") or sh.get("photo_url")
+                        sh["photo_attribution"] = hotel_live.get("attribution")
+                        sh["photo_attribution_url"] = hotel_live.get("attribution_url")
+                        sh["photo_source"] = "Google Places" if hotel_live.get("is_google_photo") else None
+                        sh["google_maps_url"] = hotel_live.get("maps_url")
+                except Exception:
+                    pass
+                st.session_state[refresh_key] = True
         if sh:
             with st.container(border=True):
                 h_c1, h_c2 = st.columns([1.2, 3.8])
                 with h_c1:
-                    h_img = get_hotel_photo(sh.get("name", ""), city_name=destination, category=sh.get("category", "hotel"))
-                    st.markdown(render_card_image_html(h_img, sh.get("name", "Hotel"), height_px=115, border_radius="10px", category_icon="🏨"), unsafe_allow_html=True)
+                    h_img = sh.get("photo_url") or get_hotel_photo(
+                        sh.get("name", ""), city_name=destination, category=sh.get("category", "hotel"),
+                        latitude=sh.get("latitude"), longitude=sh.get("longitude")
+                    )
+                    st.markdown(render_card_image_html(h_img, sh.get("name", "Hotel"), height_px=115,
+                                                        border_radius="10px",
+                                                        attribution=sh.get("photo_attribution"),
+                                                        attribution_url=sh.get("photo_attribution_url"),
+                                                        google_maps_attribution=sh.get("photo_source") == "Google Places",
+                                                        google_maps_url=sh.get("google_maps_url"),
+                                                        category_icon="🏨"),
+                                unsafe_allow_html=True)
                 with h_c2:
                     st.markdown(f"🏨 **Primary Accommodation:** **{sh.get('name', 'Selected Lodging')}**")
-                    st.markdown(f"⭐ Rating: {sh.get('rating', 4.2)} | Class: {sh.get('category', 'Standard')} | ₹{sh.get('price_per_night', 3000):,.0f} / night")
+                    hotel_rating = sh.get("rating")
+                    hotel_reviews = sh.get("review_count")
+                    if hotel_rating is not None:
+                        review_label = f" ({hotel_reviews:,} reviews)" if hotel_reviews else ""
+                        rating_label = f"⭐ {hotel_rating}{review_label} · Google Maps"
+                    else:
+                        rating_label = "Google rating unavailable"
+                    st.markdown(f"{rating_label} | Class: {sh.get('category', 'Standard')} | ₹{sh.get('price_per_night', 3000):,.0f} / night")
                     st.markdown(f"🛌 Amenities: {str(sh.get('amenities', '')).replace(';', ', ')}")
-                    h_map_url = get_google_maps_search_url(f"{sh.get('name')}, {destination}", sh.get("latitude"), sh.get("longitude"))
+                    h_map_url = sh.get("google_maps_url") or get_google_maps_search_url(
+                        f"{sh.get('name')}, {destination}", sh.get("latitude"), sh.get("longitude")
+                    )
                     st.link_button("📍 Open Hotel in Maps", h_map_url)
                     
         # Loop Day Plans
@@ -443,6 +481,28 @@ else:
                     st.write("")
                     
                 for ev in day.get("events", []):
+                    saved_place_id = ev.get("google_place_id")
+                    if saved_place_id and (ev.get("rating") is None or not ev.get("photo_url")):
+                        refresh_key = f"google_place_refreshed_{saved_place_id}"
+                        if not st.session_state.get(refresh_key):
+                            try:
+                                from services.photo_service import get_place_details_by_id
+                                event_live = get_place_details_by_id(saved_place_id)
+                                if event_live:
+                                    ev["rating"] = event_live.get("rating")
+                                    ev["review_count"] = event_live.get("reviews_count")
+                                    ev["rating_source"] = "Google Places" if event_live.get("rating") is not None else None
+                                    ev["photo_url"] = event_live.get("photo_url") or ev.get("photo_url")
+                                    ev["image_url"] = ev["photo_url"]
+                                    ev["photo_attribution"] = event_live.get("attribution")
+                                    ev["photo_attribution_url"] = event_live.get("attribution_url")
+                                    ev["photo_source"] = "Google Places" if event_live.get("is_google_photo") else None
+                                    ev["google_maps_url"] = event_live.get("maps_url")
+                                    if ev["google_maps_url"]:
+                                        ev["maps_url"] = ev["google_maps_url"]
+                            except Exception:
+                                pass
+                            st.session_state[refresh_key] = True
                     with st.container(border=True):
                         col_ev_time, col_ev_body, col_ev_map = st.columns([2.4, 5.6, 2])
                         with col_ev_time:
@@ -452,15 +512,28 @@ else:
                             
                             ev_img = ev.get("photo_url") or ev.get("image_url")
                             if not ev_img:
-                                if ev.get("type") in ["Restaurant", "Meal"] or "dining" in cat_badge.lower():
+                                if ev.get("type") == "Restaurant" or "dining" in cat_badge.lower():
                                     ev_img = get_restaurant_photo(ev.get("name", ""), city_name=destination)
+                                elif ev.get("type") == "Meal":
+                                    ev_img = trip.get("selected_hotel", {}).get("photo_url") or get_hotel_photo(
+                                        trip.get("selected_hotel", {}).get("name", ""),
+                                        city_name=destination,
+                                        category=trip.get("selected_hotel", {}).get("category", "hotel")
+                                    )
                                 elif "hotel" in cat_badge.lower() or "stay" in cat_badge.lower():
                                     ev_img = get_hotel_photo(ev.get("name", ""), city_name=destination)
                                 else:
                                     ev_img = get_attraction_photo(ev.get("name", ""), city_name=destination, category=cat_badge)
                                     
                             c_icon = "🍽️" if (ev.get("type") in ["Restaurant", "Meal"] or "dining" in cat_badge.lower()) else "🏛️"
-                            st.markdown(render_card_image_html(ev_img, ev.get("name", "Place"), height_px=80, border_radius="8px", category_icon=c_icon), unsafe_allow_html=True)
+                            st.markdown(render_card_image_html(
+                                ev_img, ev.get("name", "Place"), height_px=80, border_radius="8px",
+                                attribution=ev.get("photo_attribution"),
+                                attribution_url=ev.get("photo_attribution_url"),
+                                google_maps_attribution=ev.get("photo_source") == "Google Places",
+                                google_maps_url=ev.get("google_maps_url") or ev.get("maps_url"),
+                                category_icon=c_icon
+                            ), unsafe_allow_html=True)
                             
                             if ev.get("duration"):
                                 st.markdown(f"<span style='font-size:0.78rem;color:rgba(255,255,255,0.55);'>⏱️ {ev['duration']} mins</span>", unsafe_allow_html=True)
@@ -469,11 +542,11 @@ else:
                         with col_ev_body:
                             st.markdown(f"<p style='font-family:Outfit,sans-serif;font-weight:800;font-size:1.05rem;color:#FFFFFF;margin:0 0 4px;'>{ev.get('name', 'Place')}</p>", unsafe_allow_html=True)
                             
-                            rating_val = ev.get('rating')
+                            rating_val = ev.get('rating') if ev.get("rating_source") == "Google Places" else None
                             rev_cnt = ev.get('review_count')
-                            if rating_val:
+                            if rating_val is not None:
                                 rev_txt = f" ({rev_cnt:,.0f} reviews)" if rev_cnt else ""
-                                st.markdown(f"<span style='color:#FFD166;font-weight:700;font-size:0.82rem;'>⭐ {rating_val}{rev_txt}</span>", unsafe_allow_html=True)
+                                st.markdown(f"<span style='color:#FFD166;font-weight:700;font-size:0.82rem;'>⭐ {rating_val}{rev_txt} · Google Maps</span>", unsafe_allow_html=True)
                                 
                             st.markdown(f"<p style='font-size:0.84rem;color:rgba(255,255,255,0.72);margin:4px 0 6px;'>{ev.get('description', '')}</p>", unsafe_allow_html=True)
                             if ev.get("why_recommended"):
@@ -736,33 +809,71 @@ else:
 
     # TAB 6: RECOMMENDED HOTELS
     with tab_hotels:
-        st.markdown(f"### Hotel Accommodations in {destination}")
+        st.markdown(f"### Hotel Catalogue in {destination}")
+        st.caption("Sample accommodation entries — not verified live businesses, prices, or availability. Google ratings are shown only after a confident place match.")
         hotels_df = get_hotels(destination)
         for idx, row in hotels_df.iterrows():
+            place_info = resolve_place_photo(
+                row.get("name", ""), city_name=destination, category=f"hotel {row.get('category', '')}",
+                latitude=row.get("latitude"), longitude=row.get("longitude")
+            )
+            hotel_img = place_info.get("photo_url") or get_hotel_image(
+                row["category"], hotel_name=row.get("name", ""), city_name=destination,
+                latitude=row.get("latitude"), longitude=row.get("longitude")
+            )
+            rating_text = (f"⭐ {place_info['rating']} · Google Maps"
+                           if place_info.get("place_verified") and place_info.get("rating") is not None
+                           else "Google rating unavailable")
             with st.container(border=True):
                 h_c1, h_c2 = st.columns([1, 3])
                 with h_c1:
-                    st.image(get_hotel_image(row["category"]), use_container_width=True)
+                    st.markdown(render_card_image_html(hotel_img, row["name"], height_px=130,
+                                                       attribution=place_info.get("attribution"),
+                                                       attribution_url=place_info.get("attribution_url"),
+                                                       google_maps_attribution=place_info.get("is_google_photo", False),
+                                                       google_maps_url=place_info.get("maps_url"),
+                                                       category_icon="🏨"), unsafe_allow_html=True)
                 with h_c2:
                     st.markdown(f"#### {row['name']}")
-                    st.markdown(f"<span class='travel-badge badge-success'>{row['category']}</span> ⭐ Rating: {row.get('rating', 4.2)}", unsafe_allow_html=True)
+                    st.markdown(f"<span class='travel-badge badge-success'>{row['category']}</span> {rating_text}", unsafe_allow_html=True)
                     st.markdown(f"💰 **Nightly Rate:** ₹{row.get('price_per_night', 3000):,.0f}")
                     st.markdown(f"🛌 **Amenities:** {str(row.get('amenities', '')).replace(';', ', ')}")
-                    h_url = get_google_maps_search_url(f"{row['name']}, {destination}", row.get("latitude"), row.get("longitude"))
+                    h_url = place_info.get("maps_url") or get_google_maps_search_url(
+                        f"{row['name']}, {destination}", row.get("latitude"), row.get("longitude")
+                    )
                     st.link_button("📍 Open in Google Maps", h_url)
 
     # TAB 7: RECOMMENDED RESTAURANTS
     with tab_restaurants:
-        st.markdown(f"### Dining & Eateries in {destination}")
+        st.markdown(f"### Restaurant Catalogue in {destination}")
+        st.caption("Sample dining entries — not verified live businesses, prices, or opening hours. Google ratings are shown only after a confident place match.")
         restaurants_df = get_restaurants(destination)
         for idx, row in restaurants_df.iterrows():
+            place_info = resolve_place_photo(
+                row.get("name", ""), city_name=destination, category=f"restaurant {row.get('cuisine', '')}",
+                latitude=row.get("latitude"), longitude=row.get("longitude")
+            )
+            restaurant_img = place_info.get("photo_url") or get_restaurant_image(
+                row["cuisine"], restaurant_name=row.get("name", ""), city_name=destination,
+                latitude=row.get("latitude"), longitude=row.get("longitude")
+            )
+            rating_text = (f"⭐ {place_info['rating']} · Google Maps"
+                           if place_info.get("place_verified") and place_info.get("rating") is not None
+                           else "Google rating unavailable")
             with st.container(border=True):
                 r_c1, r_c2 = st.columns([1, 3])
                 with r_c1:
-                    st.image(get_restaurant_image(row["cuisine"]), use_container_width=True)
+                    st.markdown(render_card_image_html(restaurant_img, row["name"], height_px=130,
+                                                       attribution=place_info.get("attribution"),
+                                                       attribution_url=place_info.get("attribution_url"),
+                                                       google_maps_attribution=place_info.get("is_google_photo", False),
+                                                       google_maps_url=place_info.get("maps_url"),
+                                                       category_icon="🍽️"), unsafe_allow_html=True)
                 with r_c2:
                     st.markdown(f"#### {row['name']}")
                     st.markdown(f"🍱 **Cuisine:** {row['cuisine']} &nbsp;|&nbsp; 🥬 **Diet:** {row.get('food_type', 'Multi')}")
-                    st.markdown(f"⭐ **Rating:** {row.get('rating', 4.3)} &nbsp;|&nbsp; 🕒 **Hours:** {row.get('opening_time', '10:00')} - {row.get('closing_time', '22:30')}")
-                    r_url = get_google_maps_search_url(f"{row['name']}, {destination}", row.get("latitude"), row.get("longitude"))
+                    st.markdown(f"{rating_text} &nbsp;|&nbsp; 🕒 **Hours:** {row.get('opening_time', '10:00')} - {row.get('closing_time', '22:30')}")
+                    r_url = place_info.get("maps_url") or get_google_maps_search_url(
+                        f"{row['name']}, {destination}", row.get("latitude"), row.get("longitude")
+                    )
                     st.link_button("📍 Open in Google Maps", r_url)

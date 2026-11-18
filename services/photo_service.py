@@ -13,6 +13,10 @@ Fallback Chain:
 import os
 import time
 import hashlib
+import logging
+from html import escape
+import re
+from difflib import SequenceMatcher
 import urllib.parse
 import requests
 from dotenv import load_dotenv
@@ -25,6 +29,7 @@ from services.image_service import (
 )
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 # ── API Credentials & Configuration ─────────────────────────────────────
 GOOGLE_API_KEY = (
@@ -67,7 +72,7 @@ def _set_in_cache(cache_key: str, data: dict, place_id: str = None):
 
 
 # ── Google Places API (New) Engine ──────────────────────────────────────
-def _fetch_places_new(query: str, max_results: int = 1) -> list:
+def _fetch_places_new(query: str, max_results: int = 5, location_bias: tuple = None) -> list:
     if not is_api_configured():
         return []
     try:
@@ -78,16 +83,28 @@ def _fetch_places_new(query: str, max_results: int = 1) -> list:
             "X-Goog-FieldMask": (
                 "places.id,places.displayName,places.formattedAddress,"
                 "places.location,places.rating,places.userRatingCount,"
-                "places.googleMapsUri,places.photos,places.currentOpeningHours,"
-                "places.nationalPhoneNumber,places.websiteUri,places.reviews"
+                "places.googleMapsUri,places.photos"
             )
         }
-        body = {"textQuery": query, "maxResultCount": max_results}
+        body = {"textQuery": query, "maxResultCount": max(1, min(int(max_results), 10))}
+        if location_bias and len(location_bias) == 2:
+            body["locationBias"] = {
+                "circle": {
+                    "center": {
+                        "latitude": float(location_bias[0]),
+                        "longitude": float(location_bias[1])
+                    },
+                    "radius": 10000.0
+                }
+            }
         resp = requests.post(url, json=body, headers=headers, timeout=REQUEST_TIMEOUT)
         if resp.status_code == 200:
             return resp.json().get("places", [])
-    except Exception:
-        pass
+        logger.warning("Places Text Search returned HTTP %s.", resp.status_code)
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Places Text Search failed: %s", type(exc).__name__)
+    except (ValueError, TypeError):
+        logger.warning("Places Text Search returned an invalid response.")
     return []
 
 
@@ -97,29 +114,50 @@ def _fetch_place_details_new(place_id: str) -> dict:
     try:
         url = f"{PLACES_NEW_BASE}/places/{place_id}"
         headers = {
+            "X-Goog-Api-Key": GOOGLE_API_KEY,
             "X-Goog-FieldMask": (
                 "id,displayName,formattedAddress,location,rating,userRatingCount,"
-                "googleMapsUri,photos,currentOpeningHours,nationalPhoneNumber,websiteUri,reviews"
+                "googleMapsUri,photos"
             )
         }
-        resp = requests.get(url, params={"key": GOOGLE_API_KEY}, headers=headers, timeout=REQUEST_TIMEOUT)
+        resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         if resp.status_code == 200:
             return resp.json()
-    except Exception:
-        pass
+        logger.warning("Places Details returned HTTP %s.", resp.status_code)
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Places Details failed: %s", type(exc).__name__)
+    except (ValueError, TypeError):
+        logger.warning("Places Details returned an invalid response.")
     return {}
 
 
 def _build_new_photo_url(photo_name: str, max_width: int = 800, max_height: int = 600) -> str:
+    """
+    Resolve a Google photo reference on the server and return its temporary photo URI.
+    The API key is never sent to the browser. Google photo URIs are intentionally
+    not cached because photo resource names and media URIs can expire.
+    """
     if not photo_name or not is_api_configured():
         return ""
-    params = urllib.parse.urlencode({
-        "maxWidthPx": max_width,
-        "maxHeightPx": max_height,
+    url = f"{PLACES_NEW_BASE}/{photo_name}/media"
+    params = {
+        "maxWidthPx": max(1, min(int(max_width), 4800)),
+        "maxHeightPx": max(1, min(int(max_height), 4800)),
         "key": GOOGLE_API_KEY,
-        "skipHttpRedirect": "false"
-    })
-    return f"{PLACES_NEW_BASE}/{photo_name}/media?{params}"
+        "skipHttpRedirect": "true"
+    }
+    try:
+        response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+        if response.status_code == 200:
+            photo_uri = response.json().get("photoUri", "")
+            if photo_uri.startswith("https://"):
+                return photo_uri
+        logger.warning("Google photo media lookup failed with HTTP %s.", response.status_code)
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Google photo media lookup failed: %s", type(exc).__name__)
+    except (ValueError, TypeError):
+        logger.warning("Google photo media lookup returned an invalid response.")
+    return ""
 
 
 # ── Google Places API (Legacy) Fallback Engine ──────────────────────────
@@ -139,15 +177,98 @@ def _fetch_places_legacy(query: str) -> list:
     return []
 
 
+def _normalise_match_text(value: str) -> str:
+    """Normalise place names before comparing a Places result with the requested entity."""
+    value = str(value or "").lower().replace("&", " and ")
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+
+def _candidate_match_score(candidate: dict, expected_name: str, city_name: str = "",
+                           latitude: float = None, longitude: float = None) -> float:
+    """Conservative identity check; rejects unrelated first-result matches."""
+    returned_name = candidate.get("displayName", {}).get("text") or candidate.get("name") or ""
+    expected = _normalise_match_text(expected_name)
+    actual = _normalise_match_text(returned_name)
+    city = _normalise_match_text(city_name)
+    if not expected or not actual:
+        return 0.0
+
+    if expected == city:
+        # A destination search must resolve to the destination itself, not a
+        # nearby attraction or business whose name merely contains the city.
+        return 1.0 if actual == expected else 0.0
+
+    stop_words = {"the", "of", "and", "at", "in", "near", "india"}
+    expected_tokens = [t for t in expected.split() if t not in stop_words and t != city]
+    actual_tokens = [t for t in actual.split() if t not in stop_words and t != city]
+    if not expected_tokens:
+        expected_tokens = expected.split()
+    if not actual_tokens:
+        actual_tokens = actual.split()
+
+    matched = sum(1 for token in expected_tokens if token in actual_tokens)
+    recall = matched / max(1, len(expected_tokens))
+    precision = matched / max(1, len(actual_tokens))
+    token_f1 = (2 * precision * recall / (precision + recall)) if precision + recall else 0.0
+    similarity = SequenceMatcher(None, expected, actual).ratio()
+    score = max(similarity, token_f1)
+
+    location = candidate.get("location") or (candidate.get("geometry") or {}).get("location") or {}
+    candidate_lat = location.get("latitude", location.get("lat"))
+    candidate_lng = location.get("longitude", location.get("lng"))
+    if latitude is not None and longitude is not None and candidate_lat is not None and candidate_lng is not None:
+        try:
+            from services.routing_service import haversine_distance
+            km = haversine_distance(float(latitude), float(longitude), float(candidate_lat), float(candidate_lng))
+            if km > 20:
+                score *= 0.65
+        except (TypeError, ValueError):
+            pass
+    return score
+
+
+def _select_matching_candidate(candidates: list, expected_name: str, city_name: str = "",
+                               latitude: float = None, longitude: float = None):
+    """Return the strongest name/location match, or None when confidence is too low."""
+    if not candidates:
+        return None
+    ranked = sorted(
+        candidates,
+        key=lambda p: _candidate_match_score(p, expected_name, city_name, latitude, longitude),
+        reverse=True
+    )
+    best = ranked[0]
+    score = _candidate_match_score(best, expected_name, city_name, latitude, longitude)
+    if score < 0.82:
+        logger.info("Rejected uncertain Places match for %r in %r (score %.2f).",
+                    expected_name, city_name, score)
+        return None
+    return best
+
+
 def _build_legacy_photo_url(photo_ref: str, max_width: int = 800) -> str:
     if not photo_ref or not is_api_configured():
         return ""
-    params = urllib.parse.urlencode({
+    url = f"{PLACES_LEGACY_BASE}/photo"
+    params = {
         "maxwidth": max_width,
         "photoreference": photo_ref,
         "key": GOOGLE_API_KEY
-    })
-    return f"{PLACES_LEGACY_BASE}/photo?{params}"
+    }
+    try:
+        # Follow Google's redirect on the server so the API key is not exposed
+        # in a browser-visible image URL.
+        response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT,
+                                allow_redirects=True, stream=True)
+        try:
+            if response.status_code == 200 and response.url.startswith("https://"):
+                return response.url
+            logger.warning("Legacy Google photo lookup failed with HTTP %s.", response.status_code)
+        finally:
+            response.close()
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Legacy Google photo lookup failed: %s", type(exc).__name__)
+    return ""
 
 
 # ── Core Place & Photo Resolver ─────────────────────────────────────────
@@ -157,7 +278,10 @@ def resolve_place_photo(
     state: str = "",
     category: str = "",
     max_width: int = 800,
-    max_height: int = 600
+    max_height: int = 600,
+    latitude: float = None,
+    longitude: float = None,
+    photo_count: int = 1
 ) -> dict:
     """
     Main entry point for resolving a place and retrieving its photos, place_id,
@@ -178,8 +302,10 @@ def resolve_place_photo(
             "place_id": None,
             "name": "Unknown",
             "attribution": None,
-            "rating": 4.2,
-            "reviews_count": 50,
+            "rating": None,
+            "reviews_count": None,
+            "place_verified": False,
+            "google_place_id": None,
             "address": "",
             "maps_url": "https://www.google.com/maps",
             "fallback_used": True
@@ -198,11 +324,10 @@ def resolve_place_photo(
     else:
         level3_photo = _get_curated_dest_img(clean_city or clean_name)
 
-    ck = _make_cache_key("resolve_photo", clean_name, clean_city, clean_cat)
-    cached = _get_from_cache(ck)
-    if cached is not None:
-        return cached
-
+    ck = _make_cache_key("resolve_photo", clean_name, clean_city, clean_state, clean_cat,
+                         latitude, longitude)
+    # Do not cache Google Places responses or photo resource names: Google can
+    # expire photo names/URIs and Places content is subject to storage restrictions.
     # Construct search query with sufficient geographic context
     query_parts = [clean_name]
     if clean_city and clean_city.lower() not in clean_name.lower():
@@ -223,8 +348,10 @@ def resolve_place_photo(
         "place_id": None,
         "name": clean_name or clean_city,
         "attribution": None,
-        "rating": 4.5,
-        "reviews_count": 120,
+        "rating": None,
+        "reviews_count": None,
+        "place_verified": False,
+        "google_place_id": None,
         "address": f"{clean_name}, {clean_city}, India" if clean_city else clean_name,
         "maps_url": fallback_maps,
         "phone": None,
@@ -240,17 +367,20 @@ def resolve_place_photo(
         return fallback_result
 
     # ── Attempt A: Places API (New) ───────────────────────────────────
-    new_results = _fetch_places_new(query, max_results=1)
-    if new_results:
-        p = new_results[0]
+    location_bias = (latitude, longitude) if latitude is not None and longitude is not None else None
+    new_results = _fetch_places_new(query, max_results=5, location_bias=location_bias)
+    p = _select_matching_candidate(new_results, clean_name or clean_city, clean_city,
+                                   latitude, longitude)
+    if p:
         place_id = p.get("id")
         photos_raw = p.get("photos", [])
         gallery = []
         primary_photo = level3_photo
         attribution = None
+        attribution_url = None
 
         if photos_raw:
-            for idx, pr in enumerate(photos_raw[:5]):
+            for idx, pr in enumerate(photos_raw[:max(1, min(int(photo_count), 5))]):
                 p_name = pr.get("name", "")
                 if p_name:
                     p_url = _build_new_photo_url(p_name, max_width, max_height)
@@ -261,6 +391,9 @@ def resolve_place_photo(
                             author_attribs = pr.get("authorAttributions", [])
                             if author_attribs:
                                 attribution = author_attribs[0].get("displayName", "Google Maps Contributor")
+                                attribution_url = author_attribs[0].get("uri")
+                                if attribution_url and attribution_url.startswith("//"):
+                                    attribution_url = "https:" + attribution_url
 
         loc = p.get("location", {})
         hours_data = p.get("currentOpeningHours", {})
@@ -286,8 +419,11 @@ def resolve_place_photo(
             "place_id": place_id,
             "name": p.get("displayName", {}).get("text", clean_name),
             "attribution": attribution,
-            "rating": p.get("rating", 4.5),
-            "reviews_count": p.get("userRatingCount", 120),
+            "attribution_url": attribution_url,
+            "rating": p.get("rating"),
+            "reviews_count": p.get("userRatingCount"),
+            "place_verified": True,
+            "google_place_id": place_id,
             "address": p.get("formattedAddress", fallback_result["address"]),
             "latitude": loc.get("latitude"),
             "longitude": loc.get("longitude"),
@@ -299,21 +435,22 @@ def resolve_place_photo(
             "reviews": reviews,
             "fallback_used": not bool(gallery)
         }
-        _set_in_cache(ck, result, place_id=place_id)
         return result
 
     # ── Attempt B: Places API (Legacy) ────────────────────────────────
     legacy_results = _fetch_places_legacy(query)
-    if legacy_results:
-        p = legacy_results[0]
+    p = _select_matching_candidate(legacy_results, clean_name or clean_city, clean_city,
+                                   latitude, longitude)
+    if p:
         place_id = p.get("place_id")
         photos_raw = p.get("photos", [])
         gallery = []
         primary_photo = level3_photo
         attribution = None
+        attribution_url = None
 
         if photos_raw:
-            for idx, pr in enumerate(photos_raw[:5]):
+            for idx, pr in enumerate(photos_raw[:max(1, min(int(photo_count), 5))]):
                 p_ref = pr.get("photo_reference", "")
                 if p_ref:
                     p_url = _build_legacy_photo_url(p_ref, max_width)
@@ -335,8 +472,11 @@ def resolve_place_photo(
             "place_id": place_id,
             "name": p.get("name", clean_name),
             "attribution": attribution,
-            "rating": p.get("rating", 4.5),
-            "reviews_count": p.get("user_ratings_total", 120),
+            "attribution_url": attribution_url,
+            "rating": p.get("rating"),
+            "reviews_count": p.get("user_ratings_total"),
+            "place_verified": True,
+            "google_place_id": place_id,
             "address": p.get("formatted_address", fallback_result["address"]),
             "latitude": geom.get("lat"),
             "longitude": geom.get("lng"),
@@ -348,12 +488,63 @@ def resolve_place_photo(
             "reviews": [],
             "fallback_used": not bool(gallery)
         }
-        _set_in_cache(ck, result, place_id=place_id)
         return result
 
     # ── Fallback ──────────────────────────────────────────────────────
     _set_in_cache(ck, fallback_result)
     return fallback_result
+
+
+def get_place_details_by_id(place_id: str, max_width: int = 800, max_height: int = 600,
+                           photo_count: int = 1) -> dict:
+    """
+    Fetch fresh Google Places details for a previously matched Place ID.
+    Place IDs may be retained; the returned Places content and photo URI must
+    remain transient and should only be used for the current display.
+    """
+    if not place_id:
+        return {}
+    place = _fetch_place_details_new(place_id)
+    if not place:
+        return {}
+
+    photos = place.get("photos", [])[:max(1, min(int(photo_count), 5))]
+    gallery = []
+    primary_attribution = None
+    primary_attribution_url = None
+    for photo in photos:
+        photo_name = photo.get("name", "")
+        photo_url = _build_new_photo_url(photo_name, max_width, max_height) if photo_name else ""
+        if photo_url:
+            gallery.append(photo_url)
+            if len(gallery) == 1:
+                author = (photo.get("authorAttributions") or [{}])[0]
+                primary_attribution = author.get("displayName")
+                primary_attribution_url = author.get("uri")
+                if primary_attribution_url and primary_attribution_url.startswith("//"):
+                    primary_attribution_url = "https:" + primary_attribution_url
+
+    return {
+        "success": True,
+        "place_verified": True,
+        "google_place_id": place.get("id") or place_id,
+        "name": place.get("displayName", {}).get("text"),
+        "rating": place.get("rating"),
+        "reviews_count": place.get("userRatingCount"),
+        "photo_url": gallery[0] if gallery else "",
+        "gallery_photos": gallery,
+        "is_google_photo": bool(gallery),
+        "source": "Google Places API (New)",
+        "attribution": primary_attribution,
+        "attribution_url": primary_attribution_url,
+        "address": place.get("formattedAddress"),
+        "latitude": place.get("location", {}).get("latitude"),
+        "longitude": place.get("location", {}).get("longitude"),
+        "maps_url": place.get("googleMapsUri"),
+        "opening_hours": place.get("currentOpeningHours", {}).get("weekdayDescriptions", []),
+        "open_now": place.get("currentOpeningHours", {}).get("openNow"),
+        "reviews": []
+    }
 
 
 # ── Specialized Helpers for Pages & Components ───────────────────────────
@@ -363,21 +554,27 @@ def get_destination_photo(city_name: str) -> str:
     return res.get("photo_url") or _get_curated_dest_img(city_name)
 
 
-def get_attraction_photo(attraction_name: str, city_name: str = "", category: str = "") -> str:
-    """Returns the primary Google Place Photo URL or curated fallback for an attraction."""
-    res = resolve_place_photo(attraction_name, city_name=city_name, category=category or "attraction")
+def get_attraction_photo(attraction_name: str, city_name: str = "", category: str = "",
+                         latitude: float = None, longitude: float = None) -> str:
+    """Returns a matched Google photo or a relevant curated fallback."""
+    res = resolve_place_photo(attraction_name, city_name=city_name, category=category or "attraction",
+                              latitude=latitude, longitude=longitude)
     return res.get("photo_url") or _get_curated_attr_img(category, attraction_name)
 
 
-def get_hotel_photo(hotel_name: str, city_name: str = "", category: str = "") -> str:
-    """Returns the primary Google Place Photo URL or curated fallback for a hotel."""
-    res = resolve_place_photo(hotel_name, city_name=city_name, category=category or "hotel")
+def get_hotel_photo(hotel_name: str, city_name: str = "", category: str = "",
+                    latitude: float = None, longitude: float = None) -> str:
+    """Returns a matched Google photo or a relevant curated fallback."""
+    res = resolve_place_photo(hotel_name, city_name=city_name, category=f"hotel {category or ''}",
+                              latitude=latitude, longitude=longitude)
     return res.get("photo_url") or _get_curated_hotel_img(category)
 
 
-def get_restaurant_photo(restaurant_name: str, city_name: str = "", cuisine: str = "") -> str:
-    """Returns the primary Google Place Photo URL or curated fallback for a restaurant."""
-    res = resolve_place_photo(restaurant_name, city_name=city_name, category=cuisine or "restaurant")
+def get_restaurant_photo(restaurant_name: str, city_name: str = "", cuisine: str = "",
+                         latitude: float = None, longitude: float = None) -> str:
+    """Returns a matched Google photo or a relevant curated fallback."""
+    res = resolve_place_photo(restaurant_name, city_name=city_name, category=f"restaurant {cuisine or ''}",
+                              latitude=latitude, longitude=longitude)
     return res.get("photo_url") or _get_curated_rest_img(cuisine)
 
 
@@ -400,7 +597,7 @@ def get_place_photo(place_id: str, max_width: int = 800, max_height: int = 600) 
 
 def get_place_photos(place_id_or_name: str, city_name: str = "", count: int = 5) -> list:
     """Retrieves up to `count` photo URLs for a place or destination."""
-    res = resolve_place_photo(place_id_or_name, city_name=city_name)
+    res = resolve_place_photo(place_id_or_name, city_name=city_name, photo_count=count)
     gallery = res.get("gallery_photos", [])
     if gallery:
         return gallery[:count]
@@ -419,26 +616,40 @@ def render_card_image_html(
     height_px: int = 155,
     border_radius: str = "12px 12px 0 0",
     attribution: str = None,
-    category_icon: str = "📍"
+    category_icon: str = "📍",
+    attribution_url: str = None,
+    google_maps_attribution: bool = False,
+    google_maps_url: str = None
 ) -> str:
     """
     Renders an HTML <img> tag with a self-healing onerror javascript handler.
     If the image fails to load, it automatically transitions to a stylish gradient card.
     Never shows broken image icons, empty boxes, or leaks raw HTML into markdown.
     """
-    safe_alt = str(alt_name or "Place").replace('"', '&quot;').replace("'", "&#39;")
-    safe_url = photo_url or GENERAL_FALLBACK
-    safe_icon = category_icon or "📍"
+    safe_alt = escape(str(alt_name or "Place"), quote=True)
+    safe_url = escape(str(photo_url or GENERAL_FALLBACK), quote=True)
+    safe_icon = escape(str(category_icon or "📍"))
 
     attrib_html = ""
     if attribution:
-        attrib_html = f'<div style="position:absolute;bottom:4px;right:6px;background:rgba(0,0,0,0.60);border-radius:4px;padding:2px 6px;font-size:0.62rem;color:rgba(255,255,255,0.75);">📸 {attribution}</div>'
+        safe_attribution = escape(str(attribution))
+        if attribution_url and str(attribution_url).startswith(("https://", "http://")):
+            safe_attribution = f'<a href="{escape(str(attribution_url), quote=True)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">{safe_attribution}</a>'
+        attrib_html = f'<div style="position:absolute;bottom:4px;right:6px;background:rgba(0,0,0,0.60);border-radius:4px;padding:2px 6px;font-size:0.62rem;color:rgba(255,255,255,0.75);">📸 {safe_attribution}</div>'
+
+    google_maps_html = ""
+    if google_maps_attribution:
+        google_label = '<span translate="no">Google Maps</span>'
+        if google_maps_url and str(google_maps_url).startswith(("https://", "http://")):
+            google_label = f'<a href="{escape(str(google_maps_url), quote=True)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;" translate="no">Google Maps</a>'
+        google_maps_html = f'<div style="position:absolute;bottom:4px;left:6px;background:rgba(255,255,255,0.92);border-radius:4px;padding:2px 6px;font-size:0.62rem;color:#5e5e5e;">{google_label}</div>'
 
     return (
         f'<div style="position:relative;width:100%;height:{height_px}px;overflow:hidden;border-radius:{border_radius};background:linear-gradient(135deg,#17243D,#284068);">'
         f'<img src="{safe_url}" alt="{safe_alt}" style="width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.3s ease;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';" />'
         f'<div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;background:linear-gradient(135deg,#17243D,#FF7A59);color:#FFFFFF;font-family:Outfit,sans-serif;font-size:1.1rem;font-weight:700;padding:12px;text-align:center;">{safe_icon} {safe_alt}</div>'
         f'{attrib_html}'
+        f'{google_maps_html}'
         f'</div>'
     )
 
