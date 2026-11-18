@@ -14,6 +14,7 @@ import os
 import time
 import hashlib
 import logging
+from html import escape
 import re
 from difflib import SequenceMatcher
 import urllib.parse
@@ -371,6 +372,7 @@ def resolve_place_photo(
         gallery = []
         primary_photo = level3_photo
         attribution = None
+        attribution_url = None
 
         if photos_raw:
             for idx, pr in enumerate(photos_raw[:max(1, min(int(photo_count), 5))]):
@@ -384,6 +386,9 @@ def resolve_place_photo(
                             author_attribs = pr.get("authorAttributions", [])
                             if author_attribs:
                                 attribution = author_attribs[0].get("displayName", "Google Maps Contributor")
+                                attribution_url = author_attribs[0].get("uri")
+                                if attribution_url and attribution_url.startswith("//"):
+                                    attribution_url = "https:" + attribution_url
 
         loc = p.get("location", {})
         hours_data = p.get("currentOpeningHours", {})
@@ -409,6 +414,7 @@ def resolve_place_photo(
             "place_id": place_id,
             "name": p.get("displayName", {}).get("text", clean_name),
             "attribution": attribution,
+            "attribution_url": attribution_url,
             "rating": p.get("rating"),
             "reviews_count": p.get("userRatingCount"),
             "place_verified": True,
@@ -436,6 +442,7 @@ def resolve_place_photo(
         gallery = []
         primary_photo = level3_photo
         attribution = None
+        attribution_url = None
 
         if photos_raw:
             for idx, pr in enumerate(photos_raw[:max(1, min(int(photo_count), 5))]):
@@ -460,6 +467,7 @@ def resolve_place_photo(
             "place_id": place_id,
             "name": p.get("name", clean_name),
             "attribution": attribution,
+            "attribution_url": attribution_url,
             "rating": p.get("rating"),
             "reviews_count": p.get("user_ratings_total"),
             "place_verified": True,
@@ -551,20 +559,24 @@ def render_card_image_html(
     height_px: int = 155,
     border_radius: str = "12px 12px 0 0",
     attribution: str = None,
-    category_icon: str = "📍"
+    category_icon: str = "📍",
+    attribution_url: str = None
 ) -> str:
     """
     Renders an HTML <img> tag with a self-healing onerror javascript handler.
     If the image fails to load, it automatically transitions to a stylish gradient card.
     Never shows broken image icons, empty boxes, or leaks raw HTML into markdown.
     """
-    safe_alt = str(alt_name or "Place").replace('"', '&quot;').replace("'", "&#39;")
-    safe_url = photo_url or GENERAL_FALLBACK
-    safe_icon = category_icon or "📍"
+    safe_alt = escape(str(alt_name or "Place"), quote=True)
+    safe_url = escape(str(photo_url or GENERAL_FALLBACK), quote=True)
+    safe_icon = escape(str(category_icon or "📍"))
 
     attrib_html = ""
     if attribution:
-        attrib_html = f'<div style="position:absolute;bottom:4px;right:6px;background:rgba(0,0,0,0.60);border-radius:4px;padding:2px 6px;font-size:0.62rem;color:rgba(255,255,255,0.75);">📸 {attribution}</div>'
+        safe_attribution = escape(str(attribution))
+        if attribution_url and str(attribution_url).startswith(("https://", "http://")):
+            safe_attribution = f'<a href="{escape(str(attribution_url), quote=True)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">{safe_attribution}</a>'
+        attrib_html = f'<div style="position:absolute;bottom:4px;right:6px;background:rgba(0,0,0,0.60);border-radius:4px;padding:2px 6px;font-size:0.62rem;color:rgba(255,255,255,0.75);">📸 {safe_attribution}</div>'
 
     return (
         f'<div style="position:relative;width:100%;height:{height_px}px;overflow:hidden;border-radius:{border_radius};background:linear-gradient(135deg,#17243D,#284068);">'
