@@ -331,6 +331,8 @@ def generate_itinerary(
         selected_hotel["photo_url"] = None
         selected_hotel["photo_attribution"] = None
         selected_hotel["photo_attribution_url"] = None
+        selected_hotel["photo_source"] = None
+        selected_hotel["google_maps_url"] = None
 
     hotel_lat = float(selected_hotel.get("latitude", city_lat))
     hotel_lng = float(selected_hotel.get("longitude", city_lng))
