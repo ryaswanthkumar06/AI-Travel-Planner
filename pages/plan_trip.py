@@ -763,7 +763,7 @@ else:
         hotels_df = get_hotels(destination)
         for idx, row in hotels_df.iterrows():
             place_info = resolve_place_photo(
-                row.get("name", ""), city_name=destination, category=row.get("category", "hotel"),
+                row.get("name", ""), city_name=destination, category=f"hotel {row.get('category', '')}",
                 latitude=row.get("latitude"), longitude=row.get("longitude")
             )
             hotel_img = place_info.get("photo_url") or get_hotel_image(
@@ -793,7 +793,7 @@ else:
         restaurants_df = get_restaurants(destination)
         for idx, row in restaurants_df.iterrows():
             place_info = resolve_place_photo(
-                row.get("name", ""), city_name=destination, category=row.get("cuisine", "restaurant"),
+                row.get("name", ""), city_name=destination, category=f"restaurant {row.get('cuisine', '')}",
                 latitude=row.get("latitude"), longitude=row.get("longitude")
             )
             restaurant_img = place_info.get("photo_url") or get_restaurant_image(
