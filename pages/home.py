@@ -221,7 +221,8 @@ with left_col:
                 google_rating = place_info.get("rating") if place_info.get("place_verified") else None
                 rating_text = f"⭐ {google_rating} · Google Maps" if google_rating is not None else "Google rating unavailable"
                 maps_url = get_google_maps_search_url(f"{h['name']}, {ctx_city}", h.get("latitude"), h.get("longitude"))
-                img_html = render_card_image_html(img, h['name'], height_px=95, border_radius="10px", category_icon="🏨")
+                img_html = render_card_image_html(img, h['name'], height_px=95, border_radius="10px",
+                                                  attribution=place_info.get("attribution"), category_icon="🏨")
                 st.markdown(textwrap.dedent(f"""
                 <div class="place-card" style="display:flex;gap:12px;align-items:center;">
                     <div style="width:110px;flex-shrink:0;">
@@ -264,7 +265,8 @@ with left_col:
                 google_rating = place_info.get("rating") if place_info.get("place_verified") else None
                 rating_text = f"⭐ {google_rating} · Google Maps" if google_rating is not None else "Google rating unavailable"
                 maps_url = get_google_maps_search_url(f"{r['name']}, {ctx_city}", r.get("latitude"), r.get("longitude"))
-                img_html = render_card_image_html(img, r['name'], height_px=95, border_radius="10px", category_icon="🍽️")
+                img_html = render_card_image_html(img, r['name'], height_px=95, border_radius="10px",
+                                                  attribution=place_info.get("attribution"), category_icon="🍽️")
                 st.markdown(textwrap.dedent(f"""
                 <div class="place-card" style="display:flex;gap:12px;align-items:center;">
                     <div style="width:110px;flex-shrink:0;">
