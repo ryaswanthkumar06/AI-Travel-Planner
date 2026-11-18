@@ -126,15 +126,32 @@ def _fetch_place_details_new(place_id: str) -> dict:
 
 
 def _build_new_photo_url(photo_name: str, max_width: int = 800, max_height: int = 600) -> str:
+    """
+    Resolve a Google photo reference on the server and return its temporary photo URI.
+    The API key is never sent to the browser. Google photo URIs are intentionally
+    not cached because photo resource names and media URIs can expire.
+    """
     if not photo_name or not is_api_configured():
         return ""
-    params = urllib.parse.urlencode({
-        "maxWidthPx": max_width,
-        "maxHeightPx": max_height,
+    url = f"{PLACES_NEW_BASE}/{photo_name}/media"
+    params = {
+        "maxWidthPx": max(1, min(int(max_width), 4800)),
+        "maxHeightPx": max(1, min(int(max_height), 4800)),
         "key": GOOGLE_API_KEY,
-        "skipHttpRedirect": "false"
-    })
-    return f"{PLACES_NEW_BASE}/{photo_name}/media?{params}"
+        "skipHttpRedirect": "true"
+    }
+    try:
+        response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+        if response.status_code == 200:
+            photo_uri = response.json().get("photoUri", "")
+            if photo_uri.startswith("https://"):
+                return photo_uri
+        logger.warning("Google photo media lookup failed with HTTP %s.", response.status_code)
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Google photo media lookup failed: %s", type(exc).__name__)
+    except (ValueError, TypeError):
+        logger.warning("Google photo media lookup returned an invalid response.")
+    return ""
 
 
 # ── Google Places API (Legacy) Fallback Engine ──────────────────────────
@@ -286,10 +303,8 @@ def resolve_place_photo(
 
     ck = _make_cache_key("resolve_photo", clean_name, clean_city, clean_state, clean_cat,
                          latitude, longitude)
-    cached = _get_from_cache(ck)
-    if cached is not None:
-        return cached
-
+    # Do not cache Google Places responses or photo resource names: Google can
+    # expire photo names/URIs and Places content is subject to storage restrictions.
     # Construct search query with sufficient geographic context
     query_parts = [clean_name]
     if clean_city and clean_city.lower() not in clean_name.lower():
@@ -392,7 +407,6 @@ def resolve_place_photo(
             "reviews": reviews,
             "fallback_used": not bool(gallery)
         }
-        _set_in_cache(ck, result, place_id=place_id)
         return result
 
     # ── Attempt B: Places API (Legacy) ────────────────────────────────
@@ -444,7 +458,6 @@ def resolve_place_photo(
             "reviews": [],
             "fallback_used": not bool(gallery)
         }
-        _set_in_cache(ck, result, place_id=place_id)
         return result
 
     # ── Fallback ──────────────────────────────────────────────────────
@@ -459,21 +472,27 @@ def get_destination_photo(city_name: str) -> str:
     return res.get("photo_url") or _get_curated_dest_img(city_name)
 
 
-def get_attraction_photo(attraction_name: str, city_name: str = "", category: str = "") -> str:
-    """Returns the primary Google Place Photo URL or curated fallback for an attraction."""
-    res = resolve_place_photo(attraction_name, city_name=city_name, category=category or "attraction")
+def get_attraction_photo(attraction_name: str, city_name: str = "", category: str = "",
+                         latitude: float = None, longitude: float = None) -> str:
+    """Returns a matched Google photo or a relevant curated fallback."""
+    res = resolve_place_photo(attraction_name, city_name=city_name, category=category or "attraction",
+                              latitude=latitude, longitude=longitude)
     return res.get("photo_url") or _get_curated_attr_img(category, attraction_name)
 
 
-def get_hotel_photo(hotel_name: str, city_name: str = "", category: str = "") -> str:
-    """Returns the primary Google Place Photo URL or curated fallback for a hotel."""
-    res = resolve_place_photo(hotel_name, city_name=city_name, category=category or "hotel")
+def get_hotel_photo(hotel_name: str, city_name: str = "", category: str = "",
+                    latitude: float = None, longitude: float = None) -> str:
+    """Returns a matched Google photo or a relevant curated fallback."""
+    res = resolve_place_photo(hotel_name, city_name=city_name, category=category or "hotel",
+                              latitude=latitude, longitude=longitude)
     return res.get("photo_url") or _get_curated_hotel_img(category)
 
 
-def get_restaurant_photo(restaurant_name: str, city_name: str = "", cuisine: str = "") -> str:
-    """Returns the primary Google Place Photo URL or curated fallback for a restaurant."""
-    res = resolve_place_photo(restaurant_name, city_name=city_name, category=cuisine or "restaurant")
+def get_restaurant_photo(restaurant_name: str, city_name: str = "", cuisine: str = "",
+                         latitude: float = None, longitude: float = None) -> str:
+    """Returns a matched Google photo or a relevant curated fallback."""
+    res = resolve_place_photo(restaurant_name, city_name=city_name, category=cuisine or "restaurant",
+                              latitude=latitude, longitude=longitude)
     return res.get("photo_url") or _get_curated_rest_img(cuisine)
 
 
