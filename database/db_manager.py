@@ -2,6 +2,42 @@ import sqlite3
 import os
 import json
 
+# Google Places content (photos, ratings, reviews, and details) must be refreshed
+# when the user views a saved place. Place IDs are the durable lookup identifiers.
+_GOOGLE_TRANSIENT_FIELDS = {
+    "photo_url", "image_url", "photos", "photo_source",
+    "photo_attribution", "photo_attribution_url", "attribution", "attribution_url",
+    "rating", "google_rating", "rating_source", "review_count", "reviews_count",
+    "user_rating_count", "reviews", "place_verified",
+    "googleMapsUri", "google_maps_uri", "maps_uri"
+}
+
+
+def _strip_transient_google_content(value):
+    """Remove non-persistable Places response fields while retaining place IDs."""
+    if isinstance(value, dict):
+        return {
+            key: _strip_transient_google_content(item)
+            for key, item in value.items()
+            if key not in _GOOGLE_TRANSIENT_FIELDS
+        }
+    if isinstance(value, list):
+        return [_strip_transient_google_content(item) for item in value]
+    return value
+
+
+def _sanitize_json_for_storage(value):
+    """Sanitize dict/list values or JSON strings before persisting trip payloads."""
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            return value
+        return json.dumps(_strip_transient_google_content(parsed), ensure_ascii=False)
+    if isinstance(value, (dict, list)):
+        return json.dumps(_strip_transient_google_content(value), ensure_ascii=False)
+    return json.dumps(value, ensure_ascii=False)
+
 DB_DIR = "data"
 DB_NAME = "travel_planner.db"
 DB_PATH = os.path.join(DB_DIR, DB_NAME)
@@ -207,9 +243,9 @@ def save_trip(
     
     interests_str = json.dumps(interests) if isinstance(interests, (list, tuple)) else str(interests or "")
     food_pref_str = json.dumps(food_preferences) if isinstance(food_preferences, (list, tuple)) else str(food_preferences or "")
-    itin_str = json.dumps(itinerary_json) if not isinstance(itinerary_json, str) else itinerary_json
-    hotel_str = json.dumps(hotel_json) if not isinstance(hotel_json, str) else hotel_json
-    rest_str = json.dumps(restaurants_json) if not isinstance(restaurants_json, str) else restaurants_json
+    itin_str = _sanitize_json_for_storage(itinerary_json)
+    hotel_str = _sanitize_json_for_storage(hotel_json)
+    rest_str = _sanitize_json_for_storage(restaurants_json)
     
     cursor.execute("""
     INSERT INTO trips (
