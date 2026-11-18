@@ -132,8 +132,8 @@ with left_col:
             Explore India.
         </h1>
         <p class="hero-sub">
-            AI-driven itineraries with verified attractions, live weather forecasts,
-            integrated route safety alerts, and curated culinary experiences.
+            AI-assisted itineraries, destination guides, live weather forecasts,
+            route insights, and clearly labelled sample accommodation and dining listings.
         </p>
     </div>
     """).strip(), unsafe_allow_html=True)
@@ -200,7 +200,8 @@ with left_col:
     hotels_col, rest_col = st.columns(2, gap="large")
 
     with hotels_col:
-        st.markdown(f"<p class='section-hdr'>🏨 Top Hotels in {ctx_city}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p class='section-hdr'>🏨 Hotel Catalogue in {ctx_city}</p>", unsafe_allow_html=True)
+        st.caption("Sample listings only — business names, prices and availability are not verified live listings.")
         try:
             hotels_df = get_hotels(ctx_city)
         except Exception:
@@ -244,7 +245,8 @@ with left_col:
                     st.link_button("📍 Maps", maps_url, use_container_width=True)
 
     with rest_col:
-        st.markdown(f"<p class='section-hdr'>🍽️ Popular Restaurants in {ctx_city}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p class='section-hdr'>🍽️ Restaurant Catalogue in {ctx_city}</p>", unsafe_allow_html=True)
+        st.caption("Sample listings only — business names, prices and availability are not verified live listings.")
         try:
             rest_df = get_restaurants(ctx_city)
         except Exception:
@@ -297,7 +299,7 @@ with left_col:
         ("🧠", "AI-Powered Itineraries", "Personalised day-by-day plans"),
         ("🌤️", "Real-Time Weather", "Live forecasts & travel alerts"),
         ("📍", "Google Maps Integration", "Directions, routes & navigation"),
-        ("✅", "Verified Data", "Real places, reviews & photos"),
+        ("📚", "Curated Travel Data", "Destination guides and sample listings"),
         ("🛡️", "Safety First", "Highway blackspot & zone alerts"),
         ("💰", "Smart Budgeting", "Cost breakdowns & optimisation"),
     ]
