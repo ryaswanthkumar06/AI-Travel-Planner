@@ -147,6 +147,7 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
         "google_place_id": google_place_id,
         "rating_source": "Google Places" if google_rating is not None else None,
         "photo_source": live_place.get("source") if live_place.get("place_verified") and live_place.get("is_google_photo") else "Catalogue fallback",
+        "photo_attribution": live_place.get("attribution") if live_place.get("place_verified") else None,
         "website": ev.get("website") or ev.get("websiteUri"),
         "phone": ev.get("phone") or ev.get("nationalPhoneNumber"),
         "open_now": ev.get("open_now"),
@@ -303,18 +304,22 @@ def generate_itinerary(
             latitude=selected_hotel.get("latitude", city_lat),
             longitude=selected_hotel.get("longitude", city_lng)
         )
+        selected_hotel["photo_url"] = hotel_details.get("photo_url") or selected_hotel.get("image_url")
+        selected_hotel["photo_attribution"] = hotel_details.get("attribution") if hotel_details.get("place_verified") else None
         if hotel_details.get("place_verified"):
             selected_hotel["google_place_id"] = hotel_details.get("google_place_id")
             selected_hotel["rating"] = hotel_details.get("rating")
             selected_hotel["review_count"] = hotel_details.get("reviews_count")
             selected_hotel["rating_source"] = "Google Places" if hotel_details.get("rating") is not None else None
-            if hotel_details.get("is_google_photo"):
-                selected_hotel["photo_url"] = hotel_details.get("photo_url")
+            if hotel_details.get("latitude") is not None and hotel_details.get("longitude") is not None:
+                selected_hotel["latitude"] = hotel_details["latitude"]
+                selected_hotel["longitude"] = hotel_details["longitude"]
+            if hotel_details.get("address"):
+                selected_hotel["address"] = hotel_details["address"]
         else:
             selected_hotel["rating"] = None
             selected_hotel["review_count"] = None
             selected_hotel["rating_source"] = None
-            selected_hotel["photo_url"] = hotel_details.get("photo_url") or selected_hotel.get("image_url")
     except Exception:
         selected_hotel["rating"] = None
         selected_hotel["review_count"] = None
