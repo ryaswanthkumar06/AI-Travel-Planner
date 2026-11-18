@@ -465,7 +465,9 @@ else:
                         rating_label = "Google rating unavailable"
                     st.markdown(f"{rating_label} | Class: {sh.get('category', 'Standard')} | ₹{sh.get('price_per_night', 3000):,.0f} / night")
                     st.markdown(f"🛌 Amenities: {str(sh.get('amenities', '')).replace(';', ', ')}")
-                    h_map_url = get_google_maps_search_url(f"{sh.get('name')}, {destination}", sh.get("latitude"), sh.get("longitude"))
+                    h_map_url = sh.get("google_maps_url") or get_google_maps_search_url(
+                        f"{sh.get('name')}, {destination}", sh.get("latitude"), sh.get("longitude")
+                    )
                     st.link_button("📍 Open Hotel in Maps", h_map_url)
                     
         # Loop Day Plans
