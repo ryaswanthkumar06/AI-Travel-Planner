@@ -187,8 +187,10 @@ def _candidate_match_score(candidate: dict, expected_name: str, city_name: str =
     if not expected or not actual:
         return 0.0
 
-    if expected == city and (actual == expected or expected in actual):
-        return 1.0
+    if expected == city:
+        # A destination search must resolve to the destination itself, not a
+        # nearby attraction or business whose name merely contains the city.
+        return 1.0 if actual == expected else 0.0
 
     stop_words = {"the", "of", "and", "at", "in", "near", "india"}
     expected_tokens = [t for t in expected.split() if t not in stop_words and t != city]
