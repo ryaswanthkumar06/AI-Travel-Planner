@@ -40,9 +40,9 @@ def validate_dataframe(df, dataset_type):
     # Check required columns
     required_cols = {
         "cities": ["id", "city", "latitude", "longitude"],
-        "attractions": ["id", "name", "city", "latitude", "longitude", "rating", "price", "opening_time", "closing_time"],
-        "restaurants": ["id", "name", "city", "latitude", "longitude", "rating", "opening_time", "closing_time"],
-        "hotels": ["id", "name", "city", "latitude", "longitude", "price_per_night", "rating"],
+        "attractions": ["id", "name", "city", "latitude", "longitude", "price", "opening_time", "closing_time"],
+        "restaurants": ["id", "name", "city", "latitude", "longitude", "opening_time", "closing_time"],
+        "hotels": ["id", "name", "city", "latitude", "longitude", "price_per_night"],
         "accident_zones": ["id", "location_name", "city", "latitude", "longitude", "risk_level"]
     }
     
@@ -100,8 +100,8 @@ def validate_dataframe(df, dataset_type):
                         row_errors.append(f"Rating out of bounds (0-5): {rating_val}")
                 except ValueError:
                     row_errors.append(f"Non-numeric rating: {rating}")
-            else:
-                row_errors.append("Missing rating value")
+            # Ratings are optional: only show a rating when it is supplied by a
+            # verified live provider. Missing ratings must not invalidate a row.
 
         # 4. Price validation
         price_fields = ["price", "price_per_night"]
