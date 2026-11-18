@@ -430,6 +430,7 @@ else:
                     st.markdown(render_card_image_html(h_img, sh.get("name", "Hotel"), height_px=115,
                                                         border_radius="10px",
                                                         attribution=sh.get("photo_attribution"),
+                                                        attribution_url=sh.get("photo_attribution_url"),
                                                         category_icon="🏨"),
                                 unsafe_allow_html=True)
                 with h_c2:
@@ -482,7 +483,8 @@ else:
                             c_icon = "🍽️" if (ev.get("type") in ["Restaurant", "Meal"] or "dining" in cat_badge.lower()) else "🏛️"
                             st.markdown(render_card_image_html(
                                 ev_img, ev.get("name", "Place"), height_px=80, border_radius="8px",
-                                attribution=ev.get("photo_attribution"), category_icon=c_icon
+                                attribution=ev.get("photo_attribution"),
+                                attribution_url=ev.get("photo_attribution_url"), category_icon=c_icon
                             ), unsafe_allow_html=True)
                             
                             if ev.get("duration"):
@@ -779,6 +781,7 @@ else:
                 with h_c1:
                     st.markdown(render_card_image_html(hotel_img, row["name"], height_px=130,
                                                        attribution=place_info.get("attribution"),
+                                                       attribution_url=place_info.get("attribution_url"),
                                                        category_icon="🏨"), unsafe_allow_html=True)
                 with h_c2:
                     st.markdown(f"#### {row['name']}")
@@ -810,6 +813,7 @@ else:
                 with r_c1:
                     st.markdown(render_card_image_html(restaurant_img, row["name"], height_px=130,
                                                        attribution=place_info.get("attribution"),
+                                                       attribution_url=place_info.get("attribution_url"),
                                                        category_icon="🍽️"), unsafe_allow_html=True)
                 with r_c2:
                     st.markdown(f"#### {row['name']}")
