@@ -105,10 +105,11 @@ def normalize_event(ev, selected_hotel=None, destination_city=None, travel_mode=
     if ev_type in ("attraction", "restaurant"):
         try:
             from services.photo_service import resolve_place_photo
+            place_category = f"restaurant {category}" if ev_type == "restaurant" else category
             live_place = resolve_place_photo(
                 place,
                 city_name=destination_city,
-                category=category,
+                category=place_category,
                 latitude=lat,
                 longitude=lng
             )
@@ -300,7 +301,7 @@ def generate_itinerary(
         hotel_details = resolve_place_photo(
             selected_hotel.get("name", ""),
             city_name=destination,
-            category=selected_hotel.get("category", "hotel"),
+            category=f"hotel {selected_hotel.get('category', '')}",
             latitude=selected_hotel.get("latitude", city_lat),
             longitude=selected_hotel.get("longitude", city_lng)
         )
