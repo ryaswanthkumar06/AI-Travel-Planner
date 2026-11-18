@@ -12,7 +12,8 @@ from services.destination_image_service import (
     get_hotel_photo,
     get_restaurant_photo,
     get_place_photos,
-    render_card_image_html
+    render_card_image_html,
+    resolve_place_photo
 )
 from services.weather_service import get_live_weather
 from services.safety_service import get_safety_report
@@ -154,9 +155,19 @@ if active_city:
             else:
                 attr_cols = st.columns(3, gap="medium")
                 for i, (_, a) in enumerate(attr_df.iterrows()):
-                    img = get_attraction_photo(a.get("name",""), city_name=city_data["city"], category=a.get("category",""))
+                    place_info = resolve_place_photo(
+                        a.get("name", ""), city_name=city_data["city"], category=a.get("category", "attraction"),
+                        latitude=a.get("latitude"), longitude=a.get("longitude")
+                    )
+                    img = place_info.get("photo_url") or get_attraction_photo(
+                        a.get("name", ""), city_name=city_data["city"], category=a.get("category", ""),
+                        latitude=a.get("latitude"), longitude=a.get("longitude")
+                    )
+                    rating_text = (f"⭐ {place_info['rating']} · Google Maps"
+                                   if place_info.get("place_verified") and place_info.get("rating") is not None
+                                   else "Google rating unavailable")
                     maps_url = get_google_maps_search_url(f"{a['name']}, {city_data['city']}", a.get("latitude"), a.get("longitude"))
-                    img_html = render_card_image_html(img, a['name'], height_px=140, category_icon="🏛️")
+                    img_html = render_card_image_html(img, a['name'], height_px=140, attribution=place_info.get("attribution"), category_icon="🏛️")
                     with attr_cols[i % 3]:
                         st.markdown(textwrap.dedent(f"""
                         <div class="dest-card" style="margin-bottom:12px;">
@@ -165,7 +176,7 @@ if active_city:
                                 <p class="dest-card-city" style="font-size:0.90rem;">{a['name']}</p>
                                 <p class="dest-card-state">{a.get('category','Attraction')}</p>
                                 <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-                                    <span class="dest-rating">⭐ {a.get('rating','N/A')}</span>
+                                    <span class="dest-rating">{rating_text}</span>
                                     <span style="font-size:0.72rem;color:rgba(255,255,255,0.45);">⏱️ {a.get('visit_duration_minutes',90)} min</span>
                                 </div>
                                 <p class="dest-card-meta">🎟️ Entry: ₹{a.get('price',0):,}</p>
@@ -184,9 +195,20 @@ if active_city:
                 st.info("No hotel data available.")
             else:
                 for _, h in hotels_df.iterrows():
-                    img = get_hotel_photo(h.get("name",""), city_name=city_data["city"], category=h.get("category","Mid-range"))
+                    place_info = resolve_place_photo(
+                        h.get("name", ""), city_name=city_data["city"], category=h.get("category", "hotel"),
+                        latitude=h.get("latitude"), longitude=h.get("longitude")
+                    )
+                    img = place_info.get("photo_url") or get_hotel_photo(
+                        h.get("name", ""), city_name=city_data["city"], category=h.get("category", "Mid-range"),
+                        latitude=h.get("latitude"), longitude=h.get("longitude")
+                    )
+                    rating_text = (f"⭐ {place_info['rating']} · Google Maps"
+                                   if place_info.get("place_verified") and place_info.get("rating") is not None
+                                   else "Google rating unavailable")
                     maps_url = get_google_maps_search_url(f"{h['name']}, {city_data['city']}", h.get("latitude"), h.get("longitude"))
-                    img_html = render_card_image_html(img, h['name'], height_px=110, border_radius="10px", category_icon="🏨")
+                    img_html = render_card_image_html(img, h['name'], height_px=110, border_radius="10px",
+                                                      attribution=place_info.get("attribution"), category_icon="🏨")
                     hc_l, hc_r = st.columns([3, 1], gap="medium")
                     with hc_l:
                         st.markdown(textwrap.dedent(f"""
@@ -196,7 +218,7 @@ if active_city:
                             </div>
                             <div class="place-card-body" style="padding:4px 0;">
                                 <p class="place-card-name" style="margin:0 0 4px;">{h['name']}</p>
-                                <p class="place-card-sub" style="margin:0 0 4px;">📍 {h.get('address', city_data['city'])} · <span class="dest-rating">⭐ {h.get('rating',4.2)}</span></p>
+                                <p class="place-card-sub" style="margin:0 0 4px;">📍 {h.get('address', city_data['city'])} · <span class="dest-rating">{rating_text}</span></p>
                                 <p class="place-card-meta" style="margin:0 0 4px;">🏷️ {h.get('category','Standard')} &nbsp;·&nbsp; 💰 ₹{h.get('price_per_night',3000):,.0f}/night</p>
                                 <p class="place-card-meta" style="margin:0;">🛌 {str(h.get('amenities','')).replace(';',' · ')[:80]}</p>
                             </div>
@@ -221,9 +243,20 @@ if active_city:
             else:
                 rc1, rc2 = st.columns(2, gap="medium")
                 for i, (_, r) in enumerate(rest_df.iterrows()):
-                    img = get_restaurant_photo(r.get("name",""), city_name=city_data["city"], cuisine=r.get("cuisine",""))
+                    place_info = resolve_place_photo(
+                        r.get("name", ""), city_name=city_data["city"], category=r.get("cuisine", "restaurant"),
+                        latitude=r.get("latitude"), longitude=r.get("longitude")
+                    )
+                    img = place_info.get("photo_url") or get_restaurant_photo(
+                        r.get("name", ""), city_name=city_data["city"], cuisine=r.get("cuisine", ""),
+                        latitude=r.get("latitude"), longitude=r.get("longitude")
+                    )
+                    rating_text = (f"⭐ {place_info['rating']} · Google Maps"
+                                   if place_info.get("place_verified") and place_info.get("rating") is not None
+                                   else "Google rating unavailable")
                     maps_url = get_google_maps_search_url(f"{r['name']}, {city_data['city']}", r.get("latitude"), r.get("longitude"))
-                    img_html = render_card_image_html(img, r['name'], height_px=100, border_radius="10px", category_icon="🍽️")
+                    img_html = render_card_image_html(img, r['name'], height_px=100, border_radius="10px",
+                                                      attribution=place_info.get("attribution"), category_icon="🍽️")
                     with (rc1 if i % 2 == 0 else rc2):
                         st.markdown(textwrap.dedent(f"""
                         <div class="place-card" style="margin-bottom:0;display:flex;gap:12px;align-items:center;">
@@ -232,7 +265,7 @@ if active_city:
                             </div>
                             <div class="place-card-body" style="padding:4px 0;">
                                 <p class="place-card-name" style="margin:0 0 4px;">{r['name']}</p>
-                                <p class="place-card-sub" style="margin:0 0 4px;">🍱 {r.get('cuisine','Multi')} · <span class="dest-rating">⭐ {r.get('rating',4.3)}</span></p>
+                                <p class="place-card-sub" style="margin:0 0 4px;">🍱 {r.get('cuisine','Multi')} · <span class="dest-rating">{rating_text}</span></p>
                                 <p class="place-card-meta" style="margin:0;">{r.get('price_range','Budget')} · {r.get('food_type','Multi')}</p>
                             </div>
                         </div>
