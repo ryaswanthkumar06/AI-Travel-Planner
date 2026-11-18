@@ -428,7 +428,9 @@ else:
                         latitude=sh.get("latitude"), longitude=sh.get("longitude")
                     )
                     st.markdown(render_card_image_html(h_img, sh.get("name", "Hotel"), height_px=115,
-                                                        border_radius="10px", category_icon="🏨"),
+                                                        border_radius="10px",
+                                                        attribution=sh.get("photo_attribution"),
+                                                        category_icon="🏨"),
                                 unsafe_allow_html=True)
                 with h_c2:
                     st.markdown(f"🏨 **Primary Accommodation:** **{sh.get('name', 'Selected Lodging')}**")
@@ -478,7 +480,10 @@ else:
                                     ev_img = get_attraction_photo(ev.get("name", ""), city_name=destination, category=cat_badge)
                                     
                             c_icon = "🍽️" if (ev.get("type") in ["Restaurant", "Meal"] or "dining" in cat_badge.lower()) else "🏛️"
-                            st.markdown(render_card_image_html(ev_img, ev.get("name", "Place"), height_px=80, border_radius="8px", category_icon=c_icon), unsafe_allow_html=True)
+                            st.markdown(render_card_image_html(
+                                ev_img, ev.get("name", "Place"), height_px=80, border_radius="8px",
+                                attribution=ev.get("photo_attribution"), category_icon=c_icon
+                            ), unsafe_allow_html=True)
                             
                             if ev.get("duration"):
                                 st.markdown(f"<span style='font-size:0.78rem;color:rgba(255,255,255,0.55);'>⏱️ {ev['duration']} mins</span>", unsafe_allow_html=True)
