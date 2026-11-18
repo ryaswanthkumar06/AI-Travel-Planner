@@ -186,7 +186,8 @@ if active_city:
                         st.link_button("📍 Maps", maps_url, use_container_width=True)
 
         with tab_hotels:
-            st.markdown("<h3 style='color:#FFFFFF;'>🏨 Recommended Hotels</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#FFFFFF;'>🏨 Hotel Catalogue</h3>", unsafe_allow_html=True)
+            st.caption("These are sample catalogue records, not verified live hotel listings. Google ratings appear only after a confident place match.")
             try:
                 hotels_df = get_hotels(city_data["city"])
             except Exception:
@@ -233,7 +234,8 @@ if active_city:
                     st.write("")
 
         with tab_rest:
-            st.markdown("<h3 style='color:#FFFFFF;'>🍽️ Popular Restaurants</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#FFFFFF;'>🍽️ Restaurant Catalogue</h3>", unsafe_allow_html=True)
+            st.caption("These are sample catalogue records, not verified live restaurant listings. Google ratings appear only after a confident place match.")
             try:
                 rest_df = get_restaurants(city_data["city"])
             except Exception:
