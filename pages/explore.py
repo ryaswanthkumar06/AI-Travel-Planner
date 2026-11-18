@@ -166,7 +166,9 @@ if active_city:
                     rating_text = (f"⭐ {place_info['rating']} · Google Maps"
                                    if place_info.get("place_verified") and place_info.get("rating") is not None
                                    else "Google rating unavailable")
-                    maps_url = get_google_maps_search_url(f"{a['name']}, {city_data['city']}", a.get("latitude"), a.get("longitude"))
+                    maps_url = place_info.get("maps_url") or get_google_maps_search_url(
+                        f"{a['name']}, {city_data['city']}", a.get("latitude"), a.get("longitude")
+                    )
                     img_html = render_card_image_html(
                         img, a['name'], height_px=140, attribution=place_info.get("attribution"),
                         attribution_url=place_info.get("attribution_url"),
@@ -212,7 +214,9 @@ if active_city:
                     rating_text = (f"⭐ {place_info['rating']} · Google Maps"
                                    if place_info.get("place_verified") and place_info.get("rating") is not None
                                    else "Google rating unavailable")
-                    maps_url = get_google_maps_search_url(f"{h['name']}, {city_data['city']}", h.get("latitude"), h.get("longitude"))
+                    maps_url = place_info.get("maps_url") or get_google_maps_search_url(
+                        f"{h['name']}, {city_data['city']}", h.get("latitude"), h.get("longitude")
+                    )
                     img_html = render_card_image_html(img, h['name'], height_px=110, border_radius="10px",
                                                       attribution=place_info.get("attribution"), attribution_url=place_info.get("attribution_url"),
                                                       google_maps_attribution=place_info.get("is_google_photo", False),
@@ -263,7 +267,9 @@ if active_city:
                     rating_text = (f"⭐ {place_info['rating']} · Google Maps"
                                    if place_info.get("place_verified") and place_info.get("rating") is not None
                                    else "Google rating unavailable")
-                    maps_url = get_google_maps_search_url(f"{r['name']}, {city_data['city']}", r.get("latitude"), r.get("longitude"))
+                    maps_url = place_info.get("maps_url") or get_google_maps_search_url(
+                        f"{r['name']}, {city_data['city']}", r.get("latitude"), r.get("longitude")
+                    )
                     img_html = render_card_image_html(img, r['name'], height_px=100, border_radius="10px",
                                                       attribution=place_info.get("attribution"), attribution_url=place_info.get("attribution_url"),
                                                       google_maps_attribution=place_info.get("is_google_photo", False),
