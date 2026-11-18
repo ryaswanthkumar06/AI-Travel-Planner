@@ -396,11 +396,8 @@ else:
         for idx, (_, row) in enumerate(filtered.iterrows()):
             col = grid_cols[idx % 3]
             img = get_destination_photo(row["city"])
-            rating_val  = round(4.2 + (hash(row["city"]) % 7) * 0.1, 1)
-            reviews_raw = (hash(row["city"]) % 120 + 20) * 100
-            reviews_str = f"{reviews_raw/1000:.1f}K" if reviews_raw >= 1000 else str(reviews_raw)
-            maps_url    = get_google_maps_search_url(f"{row['city']}, {row['state']}, India",
-                                                      row.get("latitude"), row.get("longitude"))
+            maps_url = get_google_maps_search_url(f"{row['city']}, {row['state']}, India",
+                                                  row.get("latitude"), row.get("longitude"))
             img_html = render_card_image_html(img, row["city"], height_px=160, category_icon="🌍")
             with col:
                 st.markdown(textwrap.dedent(f"""
@@ -409,10 +406,7 @@ else:
                     <div class="dest-card-body">
                         <p class="dest-card-city">{row['city']}</p>
                         <p class="dest-card-state">{row['state']}, India</p>
-                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                            <span class="dest-rating">⭐ {rating_val}</span>
-                            <span class="dest-reviews">({reviews_str})</span>
-                        </div>
+                        <p class="dest-card-meta">Explore travel highlights</p>
                         <p class="dest-card-desc">{str(row.get('description',''))[:90]}…</p>
                         <p class="dest-card-meta">📅 Best: {row.get('best_time','Oct–Mar')}</p>
                         <p class="dest-card-meta">💰 ₹{row.get('average_daily_budget',3500.0):,.0f}/day</p>
