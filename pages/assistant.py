@@ -1,5 +1,6 @@
 import streamlit as st
-import os, requests, json, textwrap
+import json
+import textwrap
 from services.data_service import get_cities, get_attractions, get_restaurants, get_hotels, get_accident_zones
 from services.weather_service import get_live_weather
 from services.safety_service import get_safety_report
@@ -59,7 +60,7 @@ with orb_col:
             <div class="orb-core">🌍</div>
         </div>
         <p class="orb-title">SmartTravel AI</p>
-        <p class="orb-sub">Online · 30+ destinations</p>
+        <p class="orb-sub">Travel assistant · Gemini when configured</p>
     </div>
     """).strip(), unsafe_allow_html=True)
 
@@ -103,44 +104,72 @@ with chat_col:
         st.session_state["chat_history"].append({"role": "user", "content": user_input})
 
     if user_input:
-        target_city = None
         q_low = user_input.lower()
-        for c in all_cities_list:
-            if c.lower() in q_low:
-                target_city = c
-                break
+        def find_city_in_text(text_value):
+            lowered = str(text_value or "").lower()
+            for city_name in sorted(all_cities_list, key=len, reverse=True):
+                if city_name.lower() in lowered:
+                    return city_name
+            return None
+
+        # Prefer the city named in this question, then active-trip context, then
+        # the most recent city mentioned in the ongoing conversation.
+        target_city = find_city_in_text(user_input)
         if not target_city and active_trip:
-            target_city = active_trip["destination"]
+            target_city = active_trip.get("destination")
         if not target_city:
-            target_city = "Goa"
+            for previous_message in reversed(st.session_state["chat_history"][:-1]):
+                target_city = find_city_in_text(previous_message.get("content", ""))
+                if target_city:
+                    break
 
         # ── Try Gemini API first (uses configurable GEMINI_MODEL and secure header)
         from services.llm_service import query_gemini_assistant, is_gemini_configured
 
-        city_attractions = [dict(r) for _, r in get_attractions(target_city).iterrows()]
-        city_hotels      = [dict(r) for _, r in get_hotels(target_city).iterrows()]
-        city_restaurants = [dict(r) for _, r in get_restaurants(target_city).iterrows()]
-        city_zones       = [dict(r) for _, r in get_accident_zones(target_city).iterrows()]
+        city_attractions = [dict(r) for _, r in get_attractions(target_city).iterrows()] if target_city else []
+        city_hotels      = [dict(r) for _, r in get_hotels(target_city).iterrows()] if target_city else []
+        city_restaurants = [dict(r) for _, r in get_restaurants(target_city).iterrows()] if target_city else []
+        city_zones       = [dict(r) for _, r in get_accident_zones(target_city).iterrows()] if target_city else []
 
+        previous_messages = st.session_state["chat_history"][:-1][-8:]
+        conversation_context = "\n".join(
+            f"{'User' if item.get('role') == 'user' else 'Assistant'}: {item.get('content', '')}"
+            for item in previous_messages
+            if item.get("role") in ("user", "assistant")
+        )
         resp_text = None
+        gemini_state = "not_configured"
         if is_gemini_configured():
-            with st.spinner("🌍 Analysing travel database…"):
-                prompt = f"""You are SmartTravel AI, expert India travel consultant.
-Destination context: {target_city}
-Attractions: {[a['name']+'('+a['category']+')' for a in city_attractions[:8]]}
-Hotels: {[h['name']+'('+h['category']+',₹'+str(h.get('price_per_night',''))+')' for h in city_hotels[:5]]}
-Restaurants: {[r['name']+'('+r['cuisine']+')' for r in city_restaurants[:5]]}
-Safety: {[z['location_name']+'-'+z['risk_level'] for z in city_zones[:3]]}
-Active trip: {json.dumps(active_trip['itinerary'][:2]) if active_trip else 'None'}
-Question: {user_input}
-Respond with structured bullet points, bold headers, emojis. Include 'Why I recommend it' for each place."""
+            with st.spinner("🌍 Asking Gemini…"):
+                prompt = f"""You are SmartTravel AI, an accurate and conversational India travel assistant.
+Use the supplied local catalogue as context, but distinguish catalogue estimates from live verified information.
+Do not invent Google ratings, review counts, hotel availability, opening status, prices, or safety guarantees.
+If the catalogue does not contain the requested information, say so and provide useful general guidance.
+Continue the conversation naturally and resolve follow-up references using the conversation history.
+
+Conversation so far:
+{conversation_context or 'No earlier messages.'}
+
+Destination context: {target_city or 'Not specified'}
+Attractions in the local catalogue: {[a['name']+' ('+a['category']+')' for a in city_attractions[:8]]}
+Hotels in the local catalogue: {[h['name']+' ('+h['category']+', estimated ₹'+str(h.get('price_per_night',''))+'/night)' for h in city_hotels[:5]]}
+Restaurants in the local catalogue: {[r['name']+' ('+r['cuisine']+')' for r in city_restaurants[:5]]}
+Safety catalogue entries: {[z['location_name']+' - '+z['risk_level'] for z in city_zones[:3]]}
+Active trip context: {json.dumps(active_trip.get('itinerary', [])[:2], ensure_ascii=False) if active_trip else 'None'}
+
+Latest user question: {user_input}
+
+Respond helpfully with clear sections or bullets where useful. Ask a short clarification when essential details are missing."""
                 resp_text = query_gemini_assistant(prompt)
+                gemini_state = "success" if resp_text else "request_failed"
 
-        # ── Structured local fallback
+        # ── Local catalogue fallback (clearly identified; not a Gemini answer)
         if not resp_text:
-            prefix = "🤖 **SmartTravel AI** *(Verified Database)*\n\n"
+            prefix = "🤖 **SmartTravel AI** *(Local catalogue fallback — not a Gemini response)*\n\n"
 
-            if any(k in q_low for k in ["weather","temperature","rain","forecast","climate","hot","cold"]):
+            if not target_city:
+                resp_text = prefix + "Which Indian destination are you asking about? Mention a city so I can check the local travel catalogue."
+            elif any(k in q_low for k in ["weather","temperature","rain","forecast","climate","hot","cold"]):
                 city_row = cities_df[cities_df["city"].str.lower() == target_city.lower()]
                 if not city_row.empty:
                     lat = float(city_row.iloc[0]["latitude"])
@@ -164,15 +193,15 @@ Respond with structured bullet points, bold headers, emojis. Include 'Why I reco
 
             elif any(k in q_low for k in ["hotel","stay","lodge","resort","accommodation"]):
                 if city_hotels:
-                    rows = "\n".join(f"- **{h['name']}** — *{h['category']}* · ⭐{h.get('rating','N/A')} · ₹{h.get('price_per_night','N/A'):,}/night\n  > 📍 {h.get('address',target_city)}" for h in city_hotels[:5])
-                    resp_text = prefix + f"🏨 **Recommended Hotels in {target_city}:**\n\n{rows}\n\n**💡 Why these?** All verified hotels with confirmed coordinates and Google Maps links."
+                    rows = "\n".join(f"- **{h['name']}** — *{h['category']}* · estimated ₹{h.get('price_per_night','N/A'):,}/night\n  > 📍 {h.get('address',target_city)}" for h in city_hotels[:5])
+                    resp_text = prefix + f"🏨 **Catalogue hotel entries in {target_city}:**\n\n{rows}\n\nThese are local catalogue entries, not live availability or verified Google Maps ratings."
                 else:
                     resp_text = prefix + f"No hotel data found for {target_city} in our database."
 
             elif any(k in q_low for k in ["restaurant","food","eat","dining","cuisine"]):
                 if city_restaurants:
-                    rows = "\n".join(f"- **{r['name']}** — *{r['cuisine']}* · ⭐{r.get('rating','N/A')} · {r.get('price_range','Budget')}" for r in city_restaurants[:5])
-                    resp_text = prefix + f"🍽️ **Top Dining in {target_city}:**\n\n{rows}"
+                    rows = "\n".join(f"- **{r['name']}** — *{r['cuisine']}* · {r.get('price_range','Budget')}" for r in city_restaurants[:5])
+                    resp_text = prefix + f"🍽️ **Restaurant entries in the {target_city} catalogue:**\n\n{rows}\n\nThese are catalogue entries, not live Google Maps ratings or confirmed business availability."
                 else:
                     resp_text = prefix + f"No restaurant data found for {target_city}."
 
@@ -215,7 +244,7 @@ Respond with structured bullet points, bold headers, emojis. Include 'Why I reco
                 if city_attractions:
                     rows = "\n".join(
                         f"- **{a['name']}** — *{a['category']}*\n"
-                        f"  > ⏱️ {a.get('visit_duration_minutes',90)} min | 🎟️ ₹{a.get('price',0):,} | ⭐ {a.get('rating','N/A')}"
+                        f"  > ⏱️ {a.get('visit_duration_minutes',90)} min | 🎟️ Catalogue entry fee: ₹{a.get('price',0):,}"
                         for a in city_attractions[:6]
                     )
                     resp_text = prefix + (
@@ -227,6 +256,10 @@ Respond with structured bullet points, bold headers, emojis. Include 'Why I reco
 
         with st.chat_message("assistant"):
             st.markdown(resp_text)
+        if gemini_state == "not_configured":
+            st.warning("Gemini API key is not configured. This answer came from the local catalogue, not the AI model.")
+        elif gemini_state == "request_failed":
+            st.warning("Gemini did not return a response. This answer came from the local catalogue. Check the server logs for the API error, key permissions, quota, model name, or network connection.")
         st.session_state["chat_history"].append({"role": "assistant", "content": resp_text})
 
     st.write("")
