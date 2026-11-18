@@ -24,7 +24,8 @@ This document lists every dataset used in the application, including the source 
 *   **Fields Used**: `id`, `name`, `city`, `state`, `country`, `category`, `description`, `latitude`, `longitude`, `rating`, `price`, `visit_duration_minutes`, `opening_time`, `closing_time`, `image_url`, `source`, `source_url`
 *   **Date Accessed**: 2026-08-24
 *   **License/Usage Notes**: Informational usage allowed by TSTDC; monuments details conform to official Archeological Survey of India (ASI) standards.
-*   **Status**: **REAL DATA**
+*   **Rating note**: The local `rating` values were removed because they were not independently verified. Display ratings only after a successful Google Places match.
+*   **Status**: **CURATED DATA — ROW-LEVEL DETAILS REQUIRE VERIFICATION**
 
 ---
 
