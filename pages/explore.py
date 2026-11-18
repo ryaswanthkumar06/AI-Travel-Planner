@@ -196,7 +196,7 @@ if active_city:
             else:
                 for _, h in hotels_df.iterrows():
                     place_info = resolve_place_photo(
-                        h.get("name", ""), city_name=city_data["city"], category=h.get("category", "hotel"),
+                        h.get("name", ""), city_name=city_data["city"], category=f"hotel {h.get('category', '')}",
                         latitude=h.get("latitude"), longitude=h.get("longitude")
                     )
                     img = place_info.get("photo_url") or get_hotel_photo(
@@ -244,7 +244,7 @@ if active_city:
                 rc1, rc2 = st.columns(2, gap="medium")
                 for i, (_, r) in enumerate(rest_df.iterrows()):
                     place_info = resolve_place_photo(
-                        r.get("name", ""), city_name=city_data["city"], category=r.get("cuisine", "restaurant"),
+                        r.get("name", ""), city_name=city_data["city"], category=f"restaurant {r.get('cuisine', '')}",
                         latitude=r.get("latitude"), longitude=r.get("longitude")
                     )
                     img = place_info.get("photo_url") or get_restaurant_photo(
