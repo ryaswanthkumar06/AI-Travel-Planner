@@ -13,6 +13,9 @@ Fallback Chain:
 import os
 import time
 import hashlib
+import logging
+import re
+from difflib import SequenceMatcher
 import urllib.parse
 import requests
 from dotenv import load_dotenv
@@ -25,6 +28,7 @@ from services.image_service import (
 )
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 # ── API Credentials & Configuration ─────────────────────────────────────
 GOOGLE_API_KEY = (
@@ -67,7 +71,7 @@ def _set_in_cache(cache_key: str, data: dict, place_id: str = None):
 
 
 # ── Google Places API (New) Engine ──────────────────────────────────────
-def _fetch_places_new(query: str, max_results: int = 1) -> list:
+def _fetch_places_new(query: str, max_results: int = 5, location_bias: tuple = None) -> list:
     if not is_api_configured():
         return []
     try:
@@ -82,7 +86,17 @@ def _fetch_places_new(query: str, max_results: int = 1) -> list:
                 "places.nationalPhoneNumber,places.websiteUri,places.reviews"
             )
         }
-        body = {"textQuery": query, "maxResultCount": max_results}
+        body = {"textQuery": query, "maxResultCount": max(1, min(int(max_results), 10))}
+        if location_bias and len(location_bias) == 2:
+            body["locationBias"] = {
+                "circle": {
+                    "center": {
+                        "latitude": float(location_bias[0]),
+                        "longitude": float(location_bias[1])
+                    },
+                    "radius": 10000.0
+                }
+            }
         resp = requests.post(url, json=body, headers=headers, timeout=REQUEST_TIMEOUT)
         if resp.status_code == 200:
             return resp.json().get("places", [])
@@ -97,12 +111,13 @@ def _fetch_place_details_new(place_id: str) -> dict:
     try:
         url = f"{PLACES_NEW_BASE}/places/{place_id}"
         headers = {
+            "X-Goog-Api-Key": GOOGLE_API_KEY,
             "X-Goog-FieldMask": (
                 "id,displayName,formattedAddress,location,rating,userRatingCount,"
                 "googleMapsUri,photos,currentOpeningHours,nationalPhoneNumber,websiteUri,reviews"
             )
         }
-        resp = requests.get(url, params={"key": GOOGLE_API_KEY}, headers=headers, timeout=REQUEST_TIMEOUT)
+        resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         if resp.status_code == 200:
             return resp.json()
     except Exception:
@@ -139,6 +154,73 @@ def _fetch_places_legacy(query: str) -> list:
     return []
 
 
+def _normalise_match_text(value: str) -> str:
+    """Normalise place names before comparing a Places result with the requested entity."""
+    value = str(value or "").lower().replace("&", " and ")
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+
+def _candidate_match_score(candidate: dict, expected_name: str, city_name: str = "",
+                           latitude: float = None, longitude: float = None) -> float:
+    """Conservative identity check; rejects unrelated first-result matches."""
+    returned_name = candidate.get("displayName", {}).get("text") or candidate.get("name") or ""
+    expected = _normalise_match_text(expected_name)
+    actual = _normalise_match_text(returned_name)
+    city = _normalise_match_text(city_name)
+    if not expected or not actual:
+        return 0.0
+
+    if expected == city and (actual == expected or expected in actual):
+        return 1.0
+
+    stop_words = {"the", "of", "and", "at", "in", "near", "india"}
+    expected_tokens = [t for t in expected.split() if t not in stop_words and t != city]
+    actual_tokens = set(actual.split())
+    if not expected_tokens:
+        expected_tokens = expected.split()
+    overlap = sum(1 for t in expected_tokens if t in actual_tokens) / max(1, len(expected_tokens))
+    similarity = SequenceMatcher(None, expected, actual).ratio()
+    score = max(similarity, overlap * 0.92)
+
+    address = _normalise_match_text(candidate.get("formattedAddress") or candidate.get("formatted_address") or "")
+    if city and city in address:
+        score = min(1.0, score + 0.06)
+
+    location = candidate.get("location") or candidate.get("geometry", {}).get("location") or {}
+    candidate_lat = location.get("latitude", location.get("lat"))
+    candidate_lng = location.get("longitude", location.get("lng"))
+    if latitude is not None and longitude is not None and candidate_lat is not None and candidate_lng is not None:
+        try:
+            from services.routing_service import haversine_distance
+            km = haversine_distance(float(latitude), float(longitude), float(candidate_lat), float(candidate_lng))
+            if km <= 2:
+                score = min(1.0, score + 0.08)
+            elif km > 20:
+                score *= 0.65
+        except (TypeError, ValueError):
+            pass
+    return score
+
+
+def _select_matching_candidate(candidates: list, expected_name: str, city_name: str = "",
+                               latitude: float = None, longitude: float = None):
+    """Return the strongest name/location match, or None when confidence is too low."""
+    if not candidates:
+        return None
+    ranked = sorted(
+        candidates,
+        key=lambda p: _candidate_match_score(p, expected_name, city_name, latitude, longitude),
+        reverse=True
+    )
+    best = ranked[0]
+    score = _candidate_match_score(best, expected_name, city_name, latitude, longitude)
+    if score < 0.66:
+        logger.info("Rejected uncertain Places match for %r in %r (score %.2f).",
+                    expected_name, city_name, score)
+        return None
+    return best
+
+
 def _build_legacy_photo_url(photo_ref: str, max_width: int = 800) -> str:
     if not photo_ref or not is_api_configured():
         return ""
@@ -157,7 +239,9 @@ def resolve_place_photo(
     state: str = "",
     category: str = "",
     max_width: int = 800,
-    max_height: int = 600
+    max_height: int = 600,
+    latitude: float = None,
+    longitude: float = None
 ) -> dict:
     """
     Main entry point for resolving a place and retrieving its photos, place_id,
@@ -178,8 +262,10 @@ def resolve_place_photo(
             "place_id": None,
             "name": "Unknown",
             "attribution": None,
-            "rating": 4.2,
-            "reviews_count": 50,
+            "rating": None,
+            "reviews_count": None,
+            "place_verified": False,
+            "google_place_id": None,
             "address": "",
             "maps_url": "https://www.google.com/maps",
             "fallback_used": True
@@ -198,7 +284,8 @@ def resolve_place_photo(
     else:
         level3_photo = _get_curated_dest_img(clean_city or clean_name)
 
-    ck = _make_cache_key("resolve_photo", clean_name, clean_city, clean_cat)
+    ck = _make_cache_key("resolve_photo", clean_name, clean_city, clean_state, clean_cat,
+                         latitude, longitude)
     cached = _get_from_cache(ck)
     if cached is not None:
         return cached
@@ -223,8 +310,10 @@ def resolve_place_photo(
         "place_id": None,
         "name": clean_name or clean_city,
         "attribution": None,
-        "rating": 4.5,
-        "reviews_count": 120,
+        "rating": None,
+        "reviews_count": None,
+        "place_verified": False,
+        "google_place_id": None,
         "address": f"{clean_name}, {clean_city}, India" if clean_city else clean_name,
         "maps_url": fallback_maps,
         "phone": None,
@@ -240,9 +329,11 @@ def resolve_place_photo(
         return fallback_result
 
     # ── Attempt A: Places API (New) ───────────────────────────────────
-    new_results = _fetch_places_new(query, max_results=1)
-    if new_results:
-        p = new_results[0]
+    location_bias = (latitude, longitude) if latitude is not None and longitude is not None else None
+    new_results = _fetch_places_new(query, max_results=5, location_bias=location_bias)
+    p = _select_matching_candidate(new_results, clean_name or clean_city, clean_city,
+                                   latitude, longitude)
+    if p:
         place_id = p.get("id")
         photos_raw = p.get("photos", [])
         gallery = []
@@ -286,8 +377,10 @@ def resolve_place_photo(
             "place_id": place_id,
             "name": p.get("displayName", {}).get("text", clean_name),
             "attribution": attribution,
-            "rating": p.get("rating", 4.5),
-            "reviews_count": p.get("userRatingCount", 120),
+            "rating": p.get("rating"),
+            "reviews_count": p.get("userRatingCount"),
+            "place_verified": True,
+            "google_place_id": place_id,
             "address": p.get("formattedAddress", fallback_result["address"]),
             "latitude": loc.get("latitude"),
             "longitude": loc.get("longitude"),
@@ -304,8 +397,9 @@ def resolve_place_photo(
 
     # ── Attempt B: Places API (Legacy) ────────────────────────────────
     legacy_results = _fetch_places_legacy(query)
-    if legacy_results:
-        p = legacy_results[0]
+    p = _select_matching_candidate(legacy_results, clean_name or clean_city, clean_city,
+                                   latitude, longitude)
+    if p:
         place_id = p.get("place_id")
         photos_raw = p.get("photos", [])
         gallery = []
@@ -335,8 +429,10 @@ def resolve_place_photo(
             "place_id": place_id,
             "name": p.get("name", clean_name),
             "attribution": attribution,
-            "rating": p.get("rating", 4.5),
-            "reviews_count": p.get("user_ratings_total", 120),
+            "rating": p.get("rating"),
+            "reviews_count": p.get("user_ratings_total"),
+            "place_verified": True,
+            "google_place_id": place_id,
             "address": p.get("formatted_address", fallback_result["address"]),
             "latitude": geom.get("lat"),
             "longitude": geom.get("lng"),
