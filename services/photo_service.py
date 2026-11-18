@@ -83,8 +83,7 @@ def _fetch_places_new(query: str, max_results: int = 5, location_bias: tuple = N
             "X-Goog-FieldMask": (
                 "places.id,places.displayName,places.formattedAddress,"
                 "places.location,places.rating,places.userRatingCount,"
-                "places.googleMapsUri,places.photos,places.currentOpeningHours,"
-                "places.nationalPhoneNumber,places.websiteUri,places.reviews"
+                "places.googleMapsUri,places.photos"
             )
         }
         body = {"textQuery": query, "maxResultCount": max(1, min(int(max_results), 10))}
@@ -101,8 +100,11 @@ def _fetch_places_new(query: str, max_results: int = 5, location_bias: tuple = N
         resp = requests.post(url, json=body, headers=headers, timeout=REQUEST_TIMEOUT)
         if resp.status_code == 200:
             return resp.json().get("places", [])
-    except Exception:
-        pass
+        logger.warning("Places Text Search returned HTTP %s.", resp.status_code)
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Places Text Search failed: %s", type(exc).__name__)
+    except (ValueError, TypeError):
+        logger.warning("Places Text Search returned an invalid response.")
     return []
 
 
@@ -115,14 +117,17 @@ def _fetch_place_details_new(place_id: str) -> dict:
             "X-Goog-Api-Key": GOOGLE_API_KEY,
             "X-Goog-FieldMask": (
                 "id,displayName,formattedAddress,location,rating,userRatingCount,"
-                "googleMapsUri,photos,currentOpeningHours,nationalPhoneNumber,websiteUri,reviews"
+                "googleMapsUri,photos"
             )
         }
         resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         if resp.status_code == 200:
             return resp.json()
-    except Exception:
-        pass
+        logger.warning("Places Details returned HTTP %s.", resp.status_code)
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Places Details failed: %s", type(exc).__name__)
+    except (ValueError, TypeError):
+        logger.warning("Places Details returned an invalid response.")
     return {}
 
 
@@ -538,7 +543,7 @@ def get_place_details_by_id(place_id: str, max_width: int = 800, max_height: int
         "maps_url": place.get("googleMapsUri"),
         "opening_hours": place.get("currentOpeningHours", {}).get("weekdayDescriptions", []),
         "open_now": place.get("currentOpeningHours", {}).get("openNow"),
-        "reviews": place.get("reviews", [])[:3]
+        "reviews": []
     }
 
 
