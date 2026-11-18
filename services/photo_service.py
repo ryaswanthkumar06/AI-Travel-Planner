@@ -490,6 +490,58 @@ def resolve_place_photo(
     return fallback_result
 
 
+def get_place_details_by_id(place_id: str, max_width: int = 800, max_height: int = 600,
+                           photo_count: int = 1) -> dict:
+    """
+    Fetch fresh Google Places details for a previously matched Place ID.
+    Place IDs may be retained; the returned Places content and photo URI must
+    remain transient and should only be used for the current display.
+    """
+    if not place_id:
+        return {}
+    place = _fetch_place_details_new(place_id)
+    if not place:
+        return {}
+
+    photos = place.get("photos", [])[:max(1, min(int(photo_count), 5))]
+    gallery = []
+    primary_attribution = None
+    primary_attribution_url = None
+    for photo in photos:
+        photo_name = photo.get("name", "")
+        photo_url = _build_new_photo_url(photo_name, max_width, max_height) if photo_name else ""
+        if photo_url:
+            gallery.append(photo_url)
+            if len(gallery) == 1:
+                author = (photo.get("authorAttributions") or [{}])[0]
+                primary_attribution = author.get("displayName")
+                primary_attribution_url = author.get("uri")
+                if primary_attribution_url and primary_attribution_url.startswith("//"):
+                    primary_attribution_url = "https:" + primary_attribution_url
+
+    return {
+        "success": True,
+        "place_verified": True,
+        "google_place_id": place.get("id") or place_id,
+        "name": place.get("displayName", {}).get("text"),
+        "rating": place.get("rating"),
+        "reviews_count": place.get("userRatingCount"),
+        "photo_url": gallery[0] if gallery else "",
+        "gallery_photos": gallery,
+        "is_google_photo": bool(gallery),
+        "source": "Google Places API (New)",
+        "attribution": primary_attribution,
+        "attribution_url": primary_attribution_url,
+        "address": place.get("formattedAddress"),
+        "latitude": place.get("location", {}).get("latitude"),
+        "longitude": place.get("location", {}).get("longitude"),
+        "maps_url": place.get("googleMapsUri"),
+        "opening_hours": place.get("currentOpeningHours", {}).get("weekdayDescriptions", []),
+        "open_now": place.get("currentOpeningHours", {}).get("openNow"),
+        "reviews": place.get("reviews", [])[:3]
+    }
+
+
 # ── Specialized Helpers for Pages & Components ───────────────────────────
 def get_destination_photo(city_name: str) -> str:
     """Returns the primary Google Place Photo URL or curated fallback for a destination."""
