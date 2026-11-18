@@ -176,9 +176,6 @@ with left_col:
     dest_cols = st.columns(5, gap="small")
     for idx, (_, row) in enumerate(display_cities.head(5).iterrows()):
         img = get_destination_photo(row["city"])
-        rating_val = round(4.2 + (hash(row["city"]) % 7) * 0.1, 1)
-        reviews_k  = round((hash(row["city"]) % 120 + 20) * 100)
-        reviews_str = f"{reviews_k / 1000:.1f}K" if reviews_k >= 1000 else str(reviews_k)
         img_html = render_card_image_html(img, row["city"], height_px=110, category_icon="🌍")
         with dest_cols[idx % 5]:
             st.markdown(textwrap.dedent(f"""
@@ -187,10 +184,7 @@ with left_col:
                 <div class="dest-card-body">
                     <p class="dest-card-city">{row['city']}</p>
                     <p class="dest-card-state">{row['state']}, India</p>
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                        <span class="dest-rating">⭐ {rating_val}</span>
-                        <span class="dest-reviews">({reviews_str})</span>
-                    </div>
+                    <p class="dest-card-meta">Explore destination highlights</p>
                     <p class="dest-card-meta">📅 Best: {row.get('best_time','Oct–Mar')}</p>
                     <p class="dest-card-meta">💰 ₹{row.get('average_daily_budget',3500.0):,.0f}/day</p>
                 </div>
@@ -216,7 +210,16 @@ with left_col:
             st.markdown("<p style='color:rgba(255,255,255,0.50);font-size:0.85rem;'>No hotels found for this destination.</p>", unsafe_allow_html=True)
         else:
             for _, h in hotels_df.head(3).iterrows():
-                img = get_hotel_photo(h.get("name", ""), city_name=ctx_city, category=h.get("category", "hotel"))
+                place_info = resolve_place_photo(
+                    h.get("name", ""), city_name=ctx_city, category=h.get("category", "hotel"),
+                    latitude=h.get("latitude"), longitude=h.get("longitude")
+                )
+                img = place_info.get("photo_url") or get_hotel_photo(
+                    h.get("name", ""), city_name=ctx_city, category=h.get("category", "hotel"),
+                    latitude=h.get("latitude"), longitude=h.get("longitude")
+                )
+                google_rating = place_info.get("rating") if place_info.get("place_verified") else None
+                rating_text = f"⭐ {google_rating} · Google Maps" if google_rating is not None else "Google rating unavailable"
                 maps_url = get_google_maps_search_url(f"{h['name']}, {ctx_city}", h.get("latitude"), h.get("longitude"))
                 img_html = render_card_image_html(img, h['name'], height_px=95, border_radius="10px", category_icon="🏨")
                 st.markdown(textwrap.dedent(f"""
@@ -227,7 +230,7 @@ with left_col:
                     <div class="place-card-body" style="padding:4px 0;">
                         <p class="place-card-name" style="margin:0 0 4px;">{h['name']}</p>
                         <p class="place-card-sub" style="margin:0 0 4px;">📍 {h.get('address', ctx_city)} · {h.get('category','Mid-range')}</p>
-                        <p class="place-card-meta" style="margin:0;">⭐ {h.get('rating',4.2)} &nbsp;·&nbsp; ₹{h.get('price_per_night',3000):,.0f}/night</p>
+                        <p class="place-card-meta" style="margin:0;">{rating_text} &nbsp;·&nbsp; ₹{h.get('price_per_night',3000):,.0f}/night</p>
                     </div>
                 </div>
                 """).strip(), unsafe_allow_html=True)
@@ -250,7 +253,16 @@ with left_col:
             st.markdown("<p style='color:rgba(255,255,255,0.50);font-size:0.85rem;'>No restaurants found for this destination.</p>", unsafe_allow_html=True)
         else:
             for _, r in rest_df.head(3).iterrows():
-                img = get_restaurant_photo(r.get("name", ""), city_name=ctx_city, cuisine=r.get("cuisine", ""))
+                place_info = resolve_place_photo(
+                    r.get("name", ""), city_name=ctx_city, category=r.get("cuisine", "restaurant"),
+                    latitude=r.get("latitude"), longitude=r.get("longitude")
+                )
+                img = place_info.get("photo_url") or get_restaurant_photo(
+                    r.get("name", ""), city_name=ctx_city, cuisine=r.get("cuisine", ""),
+                    latitude=r.get("latitude"), longitude=r.get("longitude")
+                )
+                google_rating = place_info.get("rating") if place_info.get("place_verified") else None
+                rating_text = f"⭐ {google_rating} · Google Maps" if google_rating is not None else "Google rating unavailable"
                 maps_url = get_google_maps_search_url(f"{r['name']}, {ctx_city}", r.get("latitude"), r.get("longitude"))
                 img_html = render_card_image_html(img, r['name'], height_px=95, border_radius="10px", category_icon="🍽️")
                 st.markdown(textwrap.dedent(f"""
@@ -261,7 +273,7 @@ with left_col:
                     <div class="place-card-body" style="padding:4px 0;">
                         <p class="place-card-name" style="margin:0 0 4px;">{r['name']}</p>
                         <p class="place-card-sub" style="margin:0 0 4px;">🍱 {r.get('cuisine','Multi')} · {r.get('food_type','Multi')}</p>
-                        <p class="place-card-meta" style="margin:0;">⭐ {r.get('rating',4.3)} &nbsp;·&nbsp; {r.get('price_range','Budget')}</p>
+                        <p class="place-card-meta" style="margin:0;">{rating_text} &nbsp;·&nbsp; {r.get('price_range','Budget')}</p>
                     </div>
                 </div>
                 """).strip(), unsafe_allow_html=True)
