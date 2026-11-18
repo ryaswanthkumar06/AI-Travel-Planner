@@ -419,6 +419,24 @@ else:
         
         # Selected Hotel Banner
         sh = trip.get("selected_hotel", {})
+        if sh and sh.get("google_place_id") and (sh.get("rating") is None or not sh.get("photo_url")):
+            place_id = sh["google_place_id"]
+            refresh_key = f"google_place_refreshed_{place_id}"
+            if not st.session_state.get(refresh_key):
+                try:
+                    from services.photo_service import get_place_details_by_id
+                    hotel_live = get_place_details_by_id(place_id)
+                    if hotel_live:
+                        sh["rating"] = hotel_live.get("rating")
+                        sh["review_count"] = hotel_live.get("reviews_count")
+                        sh["rating_source"] = "Google Places" if hotel_live.get("rating") is not None else None
+                        sh["photo_url"] = hotel_live.get("photo_url") or sh.get("photo_url")
+                        sh["photo_attribution"] = hotel_live.get("attribution")
+                        sh["photo_attribution_url"] = hotel_live.get("attribution_url")
+                        sh["photo_source"] = "Google Places" if hotel_live.get("is_google_photo") else None
+                except Exception:
+                    pass
+                st.session_state[refresh_key] = True
         if sh:
             with st.container(border=True):
                 h_c1, h_c2 = st.columns([1.2, 3.8])
@@ -458,6 +476,25 @@ else:
                     st.write("")
                     
                 for ev in day.get("events", []):
+                    saved_place_id = ev.get("google_place_id")
+                    if saved_place_id and (ev.get("rating") is None or not ev.get("photo_url")):
+                        refresh_key = f"google_place_refreshed_{saved_place_id}"
+                        if not st.session_state.get(refresh_key):
+                            try:
+                                from services.photo_service import get_place_details_by_id
+                                event_live = get_place_details_by_id(saved_place_id)
+                                if event_live:
+                                    ev["rating"] = event_live.get("rating")
+                                    ev["review_count"] = event_live.get("reviews_count")
+                                    ev["rating_source"] = "Google Places" if event_live.get("rating") is not None else None
+                                    ev["photo_url"] = event_live.get("photo_url") or ev.get("photo_url")
+                                    ev["image_url"] = ev["photo_url"]
+                                    ev["photo_attribution"] = event_live.get("attribution")
+                                    ev["photo_attribution_url"] = event_live.get("attribution_url")
+                                    ev["photo_source"] = "Google Places" if event_live.get("is_google_photo") else None
+                            except Exception:
+                                pass
+                            st.session_state[refresh_key] = True
                     with st.container(border=True):
                         col_ev_time, col_ev_body, col_ev_map = st.columns([2.4, 5.6, 2])
                         with col_ev_time:
