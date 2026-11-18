@@ -9,7 +9,7 @@ _GOOGLE_TRANSIENT_FIELDS = {
     "photo_attribution", "photo_attribution_url", "attribution", "attribution_url",
     "rating", "google_rating", "rating_source", "review_count", "reviews_count",
     "user_rating_count", "reviews", "place_verified",
-    "googleMapsUri", "google_maps_uri", "maps_uri"
+    "googleMapsUri", "google_maps_uri", "google_maps_url", "maps_uri"
 }
 
 
