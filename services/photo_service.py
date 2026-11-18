@@ -617,7 +617,9 @@ def render_card_image_html(
     border_radius: str = "12px 12px 0 0",
     attribution: str = None,
     category_icon: str = "📍",
-    attribution_url: str = None
+    attribution_url: str = None,
+    google_maps_attribution: bool = False,
+    google_maps_url: str = None
 ) -> str:
     """
     Renders an HTML <img> tag with a self-healing onerror javascript handler.
@@ -635,11 +637,19 @@ def render_card_image_html(
             safe_attribution = f'<a href="{escape(str(attribution_url), quote=True)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">{safe_attribution}</a>'
         attrib_html = f'<div style="position:absolute;bottom:4px;right:6px;background:rgba(0,0,0,0.60);border-radius:4px;padding:2px 6px;font-size:0.62rem;color:rgba(255,255,255,0.75);">📸 {safe_attribution}</div>'
 
+    google_maps_html = ""
+    if google_maps_attribution:
+        google_label = '<span translate="no">Google Maps</span>'
+        if google_maps_url and str(google_maps_url).startswith(("https://", "http://")):
+            google_label = f'<a href="{escape(str(google_maps_url), quote=True)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;" translate="no">Google Maps</a>'
+        google_maps_html = f'<div style="position:absolute;bottom:4px;left:6px;background:rgba(255,255,255,0.92);border-radius:4px;padding:2px 6px;font-size:0.62rem;color:#5e5e5e;">{google_label}</div>'
+
     return (
         f'<div style="position:relative;width:100%;height:{height_px}px;overflow:hidden;border-radius:{border_radius};background:linear-gradient(135deg,#17243D,#284068);">'
         f'<img src="{safe_url}" alt="{safe_alt}" style="width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.3s ease;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';" />'
         f'<div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;background:linear-gradient(135deg,#17243D,#FF7A59);color:#FFFFFF;font-family:Outfit,sans-serif;font-size:1.1rem;font-weight:700;padding:12px;text-align:center;">{safe_icon} {safe_alt}</div>'
         f'{attrib_html}'
+        f'{google_maps_html}'
         f'</div>'
     )
 
