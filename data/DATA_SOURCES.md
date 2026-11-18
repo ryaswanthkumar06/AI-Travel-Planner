@@ -1,4 +1,4 @@
-# SmartTravel AI - Verified Data Sources
+# SmartTravel AI - Data Sources and Verification Status
 
 This document lists every dataset used in the application, including the source agency, access details, licensing notes, and verification statuses.
 
@@ -21,7 +21,7 @@ This document lists every dataset used in the application, including the source 
 *   **Source URL**: [https://tourism.telangana.gov.in/](https://tourism.telangana.gov.in/)
 *   **Data Type**: Cultural landmarks metadata, hours of operation, and entry prices
 *   **Coverage**: Major tourist attractions in Hyderabad, India
-*   **Fields Used**: `id`, `name`, `city`, `state`, `country`, `category`, `description`, `latitude`, `longitude`, `rating`, `price`, `visit_duration_minutes`, `opening_time`, `closing_time`, `image_url`, `source`, `source_url`
+*   **Fields Used**: `id`, `name`, `city`, `state`, `country`, `category`, `description`, `latitude`, `longitude`, `rating`, `price`, `visit_duration_minutes`, `opening_time`, `closing_time`, `image_url`, `source`, `source_url` (the `rating` column is intentionally blank until provider verification)
 *   **Date Accessed**: 2026-08-24
 *   **License/Usage Notes**: Informational usage allowed by TSTDC; monuments details conform to official Archeological Survey of India (ASI) standards.
 *   **Rating note**: The local `rating` values were removed because they were not independently verified. Display ratings only after a successful Google Places match.
