@@ -314,11 +314,6 @@ def generate_itinerary(
             selected_hotel["rating"] = hotel_details.get("rating")
             selected_hotel["review_count"] = hotel_details.get("reviews_count")
             selected_hotel["rating_source"] = "Google Places" if hotel_details.get("rating") is not None else None
-            if hotel_details.get("latitude") is not None and hotel_details.get("longitude") is not None:
-                selected_hotel["latitude"] = hotel_details["latitude"]
-                selected_hotel["longitude"] = hotel_details["longitude"]
-            if hotel_details.get("address"):
-                selected_hotel["address"] = hotel_details["address"]
         else:
             selected_hotel["rating"] = None
             selected_hotel["review_count"] = None
